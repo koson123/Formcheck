@@ -2,13 +2,17 @@ name: Publish Formcheck v0.1.0
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches: [main]
     paths:
-      - .github/workflows/publish-v0.1.0.yml
+      - docs/release-publish-trigger.md
 
 permissions:
   contents: write
+
+concurrency:
+  group: publish-formcheck-v0.1.0
+  cancel-in-progress: true
 
 jobs:
   publish-release:
@@ -97,8 +101,28 @@ jobs:
               release/Formcheck_0.1.0_x64_en-US.msi `
               Formcheck-Windows-v0.1.0.zip `
               --repo "$env:GITHUB_REPOSITORY" `
-              --target "$env:GITHUB_SHA" `
+              --target main `
               --title "Formcheck v0.1.0" `
               --notes-file release-notes.md `
               --latest
           }
+
+      - name: Verify published release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $release = gh release view v0.1.0 --repo "$env:GITHUB_REPOSITORY" --json tagName,isLatest,assets | ConvertFrom-Json
+          $names = @($release.assets | ForEach-Object { $_.name })
+          $expected = @(
+            "Formcheck_0.1.0_x64-setup.exe",
+            "Formcheck_0.1.0_x64_en-US.msi",
+            "Formcheck-Windows-v0.1.0.zip"
+          )
+
+          foreach ($name in $expected) {
+            if ($names -notcontains $name) { throw "Release asset missing: $name" }
+          }
+
+          if ($release.tagName -ne "v0.1.0") { throw "Unexpected release tag." }
+          Write-Host "Verified release assets: $($names -join ', ')"
