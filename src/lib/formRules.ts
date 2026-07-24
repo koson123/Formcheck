@@ -1,7 +1,42 @@
-import type { AnalysisResult, AnalyzerMemory, ExerciseId, Landmark } from '../types'
+import type { AnalysisResult, AnalyzerMemory, ExerciseId, Landmark, RepCounterConfig } from '../types'
+import { createRepCounterState, updateRepCounter } from './repCounter'
 
 const LEFT = { shoulder: 11, elbow: 13, wrist: 15, hip: 23, knee: 25, ankle: 27 }
 const RIGHT = { shoulder: 12, elbow: 14, wrist: 16, hip: 24, knee: 26, ankle: 28 }
+
+const PUSH_UP_COUNTER: RepCounterConfig = {
+  topEnter: 158,
+  topExit: 145,
+  bottomEnter: 105,
+  bottomExit: 120,
+  topStableFrames: 10,
+  bottomStableFrames: 5,
+  returnStableFrames: 8,
+  minRange: 48,
+  minRepDurationMs: 650,
+  maxRepDurationMs: 9000,
+  cooldownMs: 500,
+  maxFrameJump: 28,
+  invalidResetFrames: 3,
+  smoothing: 0.72
+}
+
+const SQUAT_COUNTER: RepCounterConfig = {
+  topEnter: 160,
+  topExit: 148,
+  bottomEnter: 108,
+  bottomExit: 122,
+  topStableFrames: 10,
+  bottomStableFrames: 5,
+  returnStableFrames: 8,
+  minRange: 48,
+  minRepDurationMs: 700,
+  maxRepDurationMs: 10000,
+  cooldownMs: 550,
+  maxFrameJump: 28,
+  invalidResetFrames: 3,
+  smoothing: 0.72
+}
 
 type SidePoints = {
   shoulder: Landmark
@@ -13,7 +48,14 @@ type SidePoints = {
 }
 
 export function createAnalyzerMemory(): AnalyzerMemory {
-  return { phase: 'ready', reps: 0, holdStartedAt: null, holdSeconds: 0, lastCue: '' }
+  return {
+    phase: 'ready',
+    reps: 0,
+    holdStartedAt: null,
+    holdSeconds: 0,
+    lastCue: '',
+    repCounter: createRepCounterState()
+  }
 }
 
 function visible(point: Landmark | undefined) {
@@ -50,8 +92,7 @@ function angle(a: Landmark, b: Landmark, c: Landmark) {
 
 function horizontalAngle(a: Landmark, b: Landmark) {
   const raw = Math.abs(radiansToDegrees(Math.atan2(b.y - a.y, b.x - a.x)))
-  const normalized = raw > 90 ? 180 - raw : raw
-  return Math.abs(normalized)
+  return Math.abs(raw > 90 ? 180 - raw : raw)
 }
 
 function verticalDeviation(a: Landmark, b: Landmark) {
@@ -93,13 +134,16 @@ function updateHold(memory: AnalyzerMemory, good: boolean, now: number) {
   return { ...memory, phase: 'ready' as const, holdStartedAt: null, holdSeconds: 0 }
 }
 
-function noPose(memory: AnalyzerMemory): AnalysisResult {
+function noPose(memory: AnalyzerMemory, message = 'Make sure your shoulders, hips, knees, and ankles are visible.'): AnalysisResult {
   return {
     score: 0,
     headline: 'Step fully into frame',
-    cue: 'Make sure your shoulders, hips, knees, and ankles are visible.',
+    cue: message,
     positives: [],
-    metrics: [{ label: 'Body visibility', value: 'Low', good: false }],
+    metrics: [
+      { label: 'Body visibility', value: 'Low', good: false },
+      { label: 'Counter', value: 'Paused', good: false }
+    ],
     memory: { ...memory, holdStartedAt: null, holdSeconds: 0 }
   }
 }
@@ -111,13 +155,20 @@ export function analyzeForm(
   now = performance.now()
 ): AnalysisResult {
   const points = getSide(landmarks)
-  if (!points || keyVisibility(points) < 0.55) return noPose(memory)
+  if (!points || keyVisibility(points) < 0.68) {
+    if (exercise === 'push-up' || exercise === 'squat') {
+      const config = exercise === 'push-up' ? PUSH_UP_COUNTER : SQUAT_COUNTER
+      const repUpdate = updateRepCounter(memory.repCounter, Number.NaN, now, false, config)
+      return noPose({ ...memory, reps: repUpdate.state.reps, repCounter: repUpdate.state })
+    }
+    return noPose(memory)
+  }
 
   switch (exercise) {
     case 'push-up':
-      return analyzePushUp(points, memory)
+      return analyzePushUp(points, memory, now)
     case 'squat':
-      return analyzeSquat(points, memory)
+      return analyzeSquat(points, memory, now)
     case 'plank':
       return analyzePlank(points, memory, now)
     case 'handstand':
@@ -127,74 +178,95 @@ export function analyzeForm(
   }
 }
 
-function analyzePushUp(points: SidePoints, memory: AnalyzerMemory): AnalysisResult {
+function analyzePushUp(points: SidePoints, memory: AnalyzerMemory, now: number): AnalysisResult {
   const elbow = angle(points.shoulder, points.elbow, points.wrist)
   const body = angle(points.shoulder, points.hip, points.ankle)
+  const bodyFromHorizontal = horizontalAngle(points.shoulder, points.ankle)
   const hipOffset = hipOffsetFromBodyLine(points.shoulder, points.hip, points.ankle)
-  let next = { ...memory }
-
-  if (elbow < 100) next.phase = 'lowered'
-  if (next.phase === 'lowered' && elbow > 155) {
-    next = { ...next, phase: 'ready', reps: next.reps + 1 }
-  }
+  const wristNearShoulder = Math.abs(points.wrist.x - points.shoulder.x) < 0.28
+  const validPushUpPose = bodyFromHorizontal <= 38 && body >= 145 && wristNearShoulder
+  const repUpdate = updateRepCounter(memory.repCounter, elbow, now, validPushUpPose, PUSH_UP_COUNTER)
+  const next = { ...memory, reps: repUpdate.state.reps, repCounter: repUpdate.state }
 
   let score = 100
+  if (!validPushUpPose) score -= 35
   if (body < 160) score -= (160 - body) * 1.7
   if (Math.abs(hipOffset) > 0.035) score -= Math.min(28, Math.abs(hipOffset) * 420)
-  if (elbow > 125 && next.phase === 'lowered') score -= 18
 
-  let cue = 'Good line—keep the whole body moving together.'
-  if (hipOffset > 0.045) cue = 'Lift your hips slightly; your midsection is sagging.'
-  else if (hipOffset < -0.045) cue = 'Lower your hips slightly; avoid piking.'
-  else if (elbow > 145 && next.phase === 'lowered') cue = 'Lower farther until your elbows reach about 90 degrees.'
-  else if (elbow < 150 && next.phase === 'ready') cue = 'Finish the rep with full elbow lockout.'
+  let formCue = 'Good line—keep the whole body moving together.'
+  if (!validPushUpPose) formCue = 'Use a clear side view and get into a horizontal push-up position.'
+  else if (hipOffset > 0.045) formCue = 'Lift your hips slightly; your midsection is sagging.'
+  else if (hipOffset < -0.045) formCue = 'Lower your hips slightly; avoid piking.'
+  else if (repUpdate.state.phase === 'descending' && elbow > 112) formCue = 'Keep lowering until your elbows reach about 90 degrees.'
+  else if (repUpdate.state.phase === 'ascending' && elbow < 150) formCue = 'Finish with full elbow lockout.'
 
+  const counterNeedsAttention = repUpdate.status.includes('camera') || repUpdate.status.includes('Hold') || repUpdate.status.includes('ignored') || repUpdate.status.includes('Tracking')
   return {
     score: clampScore(score),
-    headline: `${next.reps} clean rep${next.reps === 1 ? '' : 's'} counted`,
-    cue,
+    headline: repUpdate.counted
+      ? `Rep ${next.reps} confirmed`
+      : next.repCounter.phase === 'waiting'
+        ? 'Hold the top position to begin'
+        : `${next.reps} verified rep${next.reps === 1 ? '' : 's'}`,
+    cue: counterNeedsAttention ? repUpdate.status : formCue,
     positives: [body >= 165 ? 'Strong body line' : '', elbow < 105 ? 'Good bottom depth' : '', elbow > 160 ? 'Full lockout' : ''].filter(Boolean),
     metrics: [
+      { label: 'Counter state', value: counterLabel(next.repCounter.phase), good: next.repCounter.phase !== 'waiting' },
       { label: 'Elbow angle', value: `${Math.round(elbow)}°`, good: elbow < 105 || elbow > 155 },
       { label: 'Body line', value: `${Math.round(body)}°`, good: body >= 160 },
-      { label: 'Hip position', value: Math.abs(hipOffset) < 0.04 ? 'Aligned' : hipOffset > 0 ? 'Low' : 'High', good: Math.abs(hipOffset) < 0.04 }
+      { label: 'Camera angle', value: `${Math.round(bodyFromHorizontal)}°`, good: bodyFromHorizontal <= 38 }
     ],
     memory: next
   }
 }
 
-function analyzeSquat(points: SidePoints, memory: AnalyzerMemory): AnalysisResult {
+function analyzeSquat(points: SidePoints, memory: AnalyzerMemory, now: number): AnalysisResult {
   const knee = angle(points.hip, points.knee, points.ankle)
   const hip = angle(points.shoulder, points.hip, points.knee)
   const lean = torsoLean(points.shoulder, points.hip)
-  let next = { ...memory }
-
-  if (knee < 105) next.phase = 'lowered'
-  if (next.phase === 'lowered' && knee > 160) {
-    next = { ...next, phase: 'ready', reps: next.reps + 1 }
-  }
+  const bodyFromHorizontal = horizontalAngle(points.shoulder, points.ankle)
+  const bodyHeight = Math.abs(points.ankle.y - points.shoulder.y)
+  const validSquatPose = bodyFromHorizontal >= 42 && bodyHeight >= 0.32 && points.hip.y < points.ankle.y
+  const repUpdate = updateRepCounter(memory.repCounter, knee, now, validSquatPose, SQUAT_COUNTER)
+  const next = { ...memory, reps: repUpdate.state.reps, repCounter: repUpdate.state }
 
   let score = 100
+  if (!validSquatPose) score -= 35
   if (lean > 48) score -= Math.min(30, (lean - 48) * 1.8)
-  if (next.phase === 'lowered' && knee > 115) score -= 20
-  if (next.phase === 'ready' && knee < 150) score -= 12
 
-  let cue = 'Keep your whole foot planted and control the tempo.'
-  if (lean > 52) cue = 'Keep your chest a little taller as you descend.'
-  else if (knee > 115 && next.phase === 'lowered') cue = 'Use a little more depth while staying comfortable.'
-  else if (knee < 150 && next.phase === 'ready') cue = 'Stand fully tall before beginning the next rep.'
+  let formCue = 'Keep your whole foot planted and control the tempo.'
+  if (!validSquatPose) formCue = 'Stand fully in frame from a clear side view before beginning.'
+  else if (lean > 52) formCue = 'Keep your chest a little taller as you descend.'
+  else if (repUpdate.state.phase === 'descending' && knee > 118) formCue = 'Continue to a consistent, comfortable depth.'
+  else if (repUpdate.state.phase === 'ascending' && knee < 150) formCue = 'Stand fully tall and hold before the next rep.'
 
+  const counterNeedsAttention = repUpdate.status.includes('camera') || repUpdate.status.includes('Hold') || repUpdate.status.includes('ignored') || repUpdate.status.includes('Tracking')
   return {
     score: clampScore(score),
-    headline: `${next.reps} controlled rep${next.reps === 1 ? '' : 's'} counted`,
-    cue,
-    positives: [knee < 105 ? 'Consistent squat depth' : '', lean <= 45 ? 'Controlled torso position' : '', knee > 160 ? 'Full standing finish' : ''].filter(Boolean),
+    headline: repUpdate.counted
+      ? `Rep ${next.reps} confirmed`
+      : next.repCounter.phase === 'waiting'
+        ? 'Stand tall and hold to begin'
+        : `${next.reps} verified rep${next.reps === 1 ? '' : 's'}`,
+    cue: counterNeedsAttention ? repUpdate.status : formCue,
+    positives: [knee < 108 ? 'Consistent squat depth' : '', lean <= 45 ? 'Controlled torso position' : '', knee > 160 ? 'Full standing finish' : ''].filter(Boolean),
     metrics: [
+      { label: 'Counter state', value: counterLabel(next.repCounter.phase), good: next.repCounter.phase !== 'waiting' },
       { label: 'Knee angle', value: `${Math.round(knee)}°`, good: knee < 110 || knee > 155 },
       { label: 'Torso lean', value: `${Math.round(lean)}°`, good: lean <= 48 },
       { label: 'Hip angle', value: `${Math.round(hip)}°`, good: hip < 115 || hip > 155 }
     ],
     memory: next
+  }
+}
+
+function counterLabel(phase: AnalyzerMemory['repCounter']['phase']) {
+  switch (phase) {
+    case 'waiting': return 'Waiting for start'
+    case 'ready': return 'Armed'
+    case 'descending': return 'Moving down'
+    case 'bottom': return 'Bottom confirmed'
+    case 'ascending': return 'Returning to start'
   }
 }
 
