@@ -112,7 +112,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $release = gh release view v0.1.0 --repo "$env:GITHUB_REPOSITORY" --json tagName,isLatest,assets | ConvertFrom-Json
+          $release = gh release view v0.1.0 --repo "$env:GITHUB_REPOSITORY" --json tagName,assets | ConvertFrom-Json
           $names = @($release.assets | ForEach-Object { $_.name })
           $expected = @(
             "Formcheck_0.1.0_x64-setup.exe",
