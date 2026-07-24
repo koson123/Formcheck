@@ -4,27 +4,45 @@ import {
   BackgroundVariant,
   Controls,
   MarkerType,
-  MiniMap,
   ReactFlow,
-  type Edge,
-  type NodeMouseHandler
+  type Edge
 } from '@xyflow/react'
 import { Search, Video, X } from 'lucide-react'
-import { skillById, skillLinks, skills } from '../data/skills'
-import type { ExerciseId, Skill, SkillCategory } from '../types'
+import { skillById, skillLinks } from '../data/skills'
+import { treeSections } from '../data/treeLayout'
+import type { Difficulty, ExerciseId, Skill, SkillCategory } from '../types'
+import { SectionNode, type SectionFlowNode } from './SectionNode'
 import { SkillNode, type SkillFlowNode } from './SkillNode'
 
-const nodeTypes = { skill: SkillNode }
+const nodeTypes = { skill: SkillNode, section: SectionNode }
+
+type TreeFlowNode = SectionFlowNode | SkillFlowNode
 
 const branchColors: Record<SkillCategory, string> = {
-  foundation: '#94a3b8',
-  push: '#fb7185',
-  pull: '#60a5fa',
-  balance: '#c084fc',
-  core: '#fbbf24',
-  legs: '#4ade80',
-  mobility: '#2dd4bf'
+  foundation: '#9ee6c1',
+  push: '#f3a6b8',
+  pull: '#98c7ff',
+  balance: '#d2b4ff',
+  core: '#f8d778',
+  legs: '#9ee7a9',
+  mobility: '#86dfd5'
 }
+
+const difficultyColors: Record<Difficulty, string> = {
+  Foundation: '#9ee6c1',
+  Beginner: '#a8d8ff',
+  Intermediate: '#d2b4ff',
+  Advanced: '#f3a6b8',
+  Elite: '#f8d778'
+}
+
+const sectionWidth = 236
+const sectionGap = 46
+const skillHeight = 118
+const skillGap = 34
+const sectionHeader = 92
+
+type TreeFilter = 'all' | 'push' | 'pull' | 'balance' | 'core' | 'legs'
 
 type Props = {
   onAnalyze: (exercise: ExerciseId) => void
@@ -33,79 +51,149 @@ type Props = {
 export function SkillTree({ onAnalyze }: Props) {
   const [query, setQuery] = useState('')
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null)
+  const [filter, setFilter] = useState<TreeFilter>('all')
   const normalizedQuery = query.trim().toLowerCase()
 
-  const nodes = useMemo<SkillFlowNode[]>(() => skills.map((skill) => ({
-    id: skill.id,
-    type: 'skill',
-    position: { x: skill.x, y: skill.y },
-    draggable: false,
-    selectable: true,
-    data: {
-      label: skill.name,
-      category: skill.category,
-      difficulty: skill.difficulty,
-      analyzer: Boolean(skill.analyzerExercise),
-      matched: Boolean(normalizedQuery && (
-        skill.name.toLowerCase().includes(normalizedQuery) ||
-        skill.category.includes(normalizedQuery) ||
-        skill.difficulty.toLowerCase().includes(normalizedQuery)
-      ))
-    }
-  })), [normalizedQuery])
+  const visibleSections = useMemo(() => {
+    if (filter === 'all') return treeSections
+    return treeSections.filter((section) => section.category === filter || section.id === 'foundations')
+  }, [filter])
 
-  const edges = useMemo<Edge[]>(() => skillLinks.map((link, index) => {
-    const source = skillById.get(link.source)
-    return {
-      id: `${link.source}-${link.target}-${index}`,
-      source: link.source,
-      target: link.target,
-      type: 'smoothstep',
-      animated: false,
-      markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-      style: { stroke: source ? branchColors[source.category] : '#64748b', strokeWidth: 1.5, opacity: 0.55 }
-    }
-  }), [])
+  const visibleSkillIds = useMemo(
+    () => new Set(visibleSections.flatMap((section) => section.skillIds)),
+    [visibleSections]
+  )
 
-  const onNodeClick: NodeMouseHandler<SkillFlowNode> = (_, node) => {
-    setSelectedSkill(skillById.get(node.id) ?? null)
-  }
+  const nodes = useMemo<TreeFlowNode[]>(() => {
+    const sectionNodes: SectionFlowNode[] = []
+    const skillNodes: SkillFlowNode[] = []
+
+    visibleSections.forEach((section, sectionIndex) => {
+      const sectionHeight = sectionHeader + section.skillIds.length * (skillHeight + skillGap) + 22
+      sectionNodes.push({
+        id: `section-${section.id}`,
+        type: 'section',
+        position: { x: sectionIndex * (sectionWidth + sectionGap), y: 0 },
+        draggable: false,
+        selectable: false,
+        data: {
+          title: section.title,
+          subtitle: section.subtitle,
+          category: section.category,
+          skillCount: section.skillIds.length
+        },
+        style: { width: sectionWidth, height: sectionHeight },
+        zIndex: -1
+      })
+
+      section.skillIds.forEach((skillId, skillIndex) => {
+        const skill = skillById.get(skillId)
+        if (!skill) return
+        const matched = Boolean(normalizedQuery && (
+          skill.name.toLowerCase().includes(normalizedQuery) ||
+          skill.category.includes(normalizedQuery) ||
+          skill.difficulty.toLowerCase().includes(normalizedQuery) ||
+          section.title.toLowerCase().includes(normalizedQuery)
+        ))
+
+        skillNodes.push({
+          id: skill.id,
+          type: 'skill',
+          parentId: `section-${section.id}`,
+          extent: 'parent',
+          position: { x: 26, y: sectionHeader + skillIndex * (skillHeight + skillGap) },
+          draggable: false,
+          selectable: true,
+          data: {
+            label: skill.name,
+            category: skill.category,
+            difficulty: skill.difficulty,
+            analyzer: Boolean(skill.analyzerExercise),
+            matched
+          },
+          style: { width: sectionWidth - 52, height: skillHeight },
+          zIndex: 2
+        })
+      })
+    })
+
+    return [...sectionNodes, ...skillNodes]
+  }, [normalizedQuery, visibleSections])
+
+  const edges = useMemo<Edge[]>(() => skillLinks
+    .filter((link) => visibleSkillIds.has(link.source) && visibleSkillIds.has(link.target))
+    .map((link, index) => {
+      const source = skillById.get(link.source)
+      const target = skillById.get(link.target)
+      const sameSection = visibleSections.some((section) => section.skillIds.includes(link.source) && section.skillIds.includes(link.target))
+      return {
+        id: `${link.source}-${link.target}-${index}`,
+        source: link.source,
+        target: link.target,
+        type: sameSection ? 'straight' : 'smoothstep',
+        animated: false,
+        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+        style: {
+          stroke: source ? branchColors[source.category] : '#718096',
+          strokeWidth: sameSection ? 2.4 : 1.6,
+          opacity: sameSection ? 0.8 : 0.48
+        },
+        zIndex: 1,
+        label: source && target && source.category !== target.category ? 'prerequisite' : undefined,
+        labelStyle: { fill: '#8090a6', fontSize: 9 },
+        labelBgStyle: { fill: '#09111e', fillOpacity: 0.9 }
+      }
+    }), [visibleSections, visibleSkillIds])
 
   return (
     <section className="workspace tree-workspace">
-      <header className="workspace-header">
+      <header className="workspace-header tree-header">
         <div>
-          <span className="eyebrow">Calisthenics roadmap</span>
-          <h1>Explore the skill tree</h1>
-          <p>Drag to move, scroll to zoom, and select any skill to see its prerequisites and technique notes.</p>
+          <span className="eyebrow">Calisthenics progression chart</span>
+          <h1>Skill roadmap</h1>
+          <p>Progressions are grouped into clear paths. Follow each column downward from foundations toward advanced skills.</p>
         </div>
         <label className="search-box">
           <Search size={18} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a skill or branch" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a skill, difficulty, or path" />
           {query ? <button onClick={() => setQuery('')} aria-label="Clear search"><X size={16} /></button> : null}
         </label>
       </header>
 
-      <div className="tree-stage">
-        <ReactFlow
+      <div className="tree-filter-bar" aria-label="Skill tree branch filter">
+        {(['all', 'push', 'pull', 'balance', 'core', 'legs'] as TreeFilter[]).map((branch) => (
+          <button key={branch} className={filter === branch ? 'active' : ''} onClick={() => setFilter(branch)}>
+            {branch === 'all' ? 'Full chart' : branch}
+          </button>
+        ))}
+      </div>
+
+      <aside className="tree-legend panel">
+        <strong>Difficulty</strong>
+        {(Object.entries(difficultyColors) as Array<[Difficulty, string]>).map(([difficulty, color]) => (
+          <span key={difficulty}><i style={{ background: color }} />{difficulty}</span>
+        ))}
+        <small>Solid vertical lines are the main progression. Fainter side lines show supporting prerequisites.</small>
+      </aside>
+
+      <div className="tree-stage tree-stage--columns">
+        <ReactFlow<TreeFlowNode>
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
-          onNodeClick={onNodeClick}
+          onNodeClick={(_, node) => {
+            if (node.type !== 'skill') return
+            setSelectedSkill(skillById.get(node.id) ?? null)
+          }}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
-          minZoom={0.25}
-          maxZoom={1.6}
+          fitViewOptions={{ padding: 0.14, minZoom: 0.25, maxZoom: 0.72 }}
+          minZoom={0.18}
+          maxZoom={1.35}
           nodesConnectable={false}
           elementsSelectable
+          proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} color="#243348" />
-          <MiniMap
-            pannable
-            zoomable
-            nodeColor={(node) => branchColors[(node.data?.category as SkillCategory) ?? 'foundation']}
-            maskColor="rgba(2, 8, 23, 0.72)"
-          />
+          <Background variant={BackgroundVariant.Lines} gap={32} size={0.6} color="#1d2b3c" />
           <Controls showInteractive={false} />
         </ReactFlow>
       </div>

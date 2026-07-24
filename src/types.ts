@@ -52,12 +52,53 @@ export type Landmark = {
   presence?: number
 }
 
+export type RepPhase = 'waiting' | 'ready' | 'descending' | 'bottom' | 'ascending'
+
+export type RepCounterState = {
+  phase: RepPhase
+  reps: number
+  topFrames: number
+  bottomFrames: number
+  returnFrames: number
+  repStartedAt: number | null
+  lastRepAt: number | null
+  smoothedAngle: number | null
+  previousRawAngle: number | null
+  minAngle: number
+  maxAngle: number
+  invalidFrames: number
+}
+
+export type RepCounterConfig = {
+  topEnter: number
+  topExit: number
+  bottomEnter: number
+  bottomExit: number
+  topStableFrames: number
+  bottomStableFrames: number
+  returnStableFrames: number
+  minRange: number
+  minRepDurationMs: number
+  maxRepDurationMs: number
+  cooldownMs: number
+  maxFrameJump: number
+  invalidResetFrames: number
+  smoothing: number
+}
+
+export type RepCounterUpdate = {
+  state: RepCounterState
+  counted: boolean
+  status: string
+}
+
 export type AnalyzerMemory = {
-  phase: 'ready' | 'lowered' | 'holding'
+  phase: 'ready' | 'holding'
   reps: number
   holdStartedAt: number | null
   holdSeconds: number
   lastCue: string
+  repCounter: RepCounterState
 }
 
 export type AnalysisResult = {
