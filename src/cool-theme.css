@@ -1,0 +1,228 @@
+:root {
+  color: #eaf3ff;
+  background: #030712;
+  --panel: rgba(8, 15, 31, 0.94);
+  --panel-strong: #081225;
+  --line: rgba(96, 165, 250, 0.18);
+  --muted: #91a4c3;
+  --text: #eef6ff;
+  --accent: #38bdf8;
+  --accent-strong: #6366f1;
+}
+
+body {
+  background:
+    radial-gradient(circle at 12% -8%, rgba(34, 211, 238, 0.16), transparent 34%),
+    radial-gradient(circle at 88% 4%, rgba(99, 102, 241, 0.18), transparent 34%),
+    radial-gradient(circle at 56% 108%, rgba(139, 92, 246, 0.12), transparent 34%),
+    #030712;
+}
+
+.sidebar {
+  border-right-color: rgba(96, 165, 250, 0.16);
+  background: rgba(3, 7, 18, 0.9);
+}
+
+.brand-mark {
+  color: #020617;
+  background: linear-gradient(135deg, #67e8f9 0%, #38bdf8 42%, #6366f1 100%);
+  box-shadow: 0 10px 34px rgba(56, 189, 248, 0.24), 0 0 36px rgba(99, 102, 241, 0.16);
+}
+
+.main-nav button:hover {
+  background: rgba(59, 130, 246, 0.09);
+}
+
+.main-nav button.active {
+  color: #e0f2fe;
+  border-color: rgba(56, 189, 248, 0.32);
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.15), rgba(99, 102, 241, 0.12));
+  box-shadow: inset 0 0 22px rgba(56, 189, 248, 0.05);
+}
+
+.privacy-card,
+.panel {
+  border-color: rgba(96, 165, 250, 0.17);
+  background: rgba(8, 15, 31, 0.84);
+}
+
+.tree-workspace {
+  background:
+    linear-gradient(180deg, rgba(8, 15, 31, 0.08), rgba(3, 7, 18, 0.52)),
+    radial-gradient(circle at 50% 45%, rgba(37, 99, 235, 0.07), transparent 48%);
+}
+
+.search-box,
+.react-flow__controls,
+.tree-filter-bar button,
+.tree-legend {
+  border-color: rgba(96, 165, 250, 0.18);
+  background: rgba(7, 13, 28, 0.94);
+}
+
+.search-box:focus-within {
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.09), 0 16px 42px rgba(0, 0, 0, 0.28);
+}
+
+.tree-filter-bar button:hover {
+  color: #dbeafe;
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.tree-filter-bar button.active {
+  color: #e0f2fe;
+  border-color: rgba(56, 189, 248, 0.38);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(99, 102, 241, 0.16));
+}
+
+.tree-section {
+  border-color: rgba(96, 165, 250, 0.24);
+  background: linear-gradient(180deg, rgba(14, 24, 49, 0.82), rgba(5, 11, 25, 0.64));
+  box-shadow: inset 0 1px 0 rgba(191, 219, 254, 0.05), 0 18px 46px rgba(0, 0, 0, 0.22);
+}
+
+.tree-section--foundation { --section-color: #67e8f9; }
+.tree-section--push { --section-color: #818cf8; }
+.tree-section--pull { --section-color: #38bdf8; }
+.tree-section--balance { --section-color: #c084fc; }
+.tree-section--core { --section-color: #60a5fa; }
+.tree-section--legs { --section-color: #2dd4bf; }
+.tree-section--mobility { --section-color: #22d3ee; }
+
+.tree-section__header {
+  border-bottom-color: rgba(96, 165, 250, 0.14);
+}
+
+.tree-section__header span,
+.skill-node__label span,
+.version-label {
+  color: #7890b4;
+}
+
+.skill-node {
+  border-color: rgba(147, 197, 253, 0.22);
+  color: #eff6ff;
+  background: linear-gradient(145deg, rgba(15, 25, 49, 0.98), rgba(7, 14, 30, 0.98));
+  box-shadow: 0 9px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(191, 219, 254, 0.03);
+}
+
+.skill-node:hover,
+.skill-node.is-selected {
+  box-shadow: 0 15px 34px rgba(0, 0, 0, 0.42), 0 0 0 1px color-mix(in srgb, var(--node-color) 42%, transparent), 0 0 24px color-mix(in srgb, var(--node-color) 12%, transparent);
+}
+
+@keyframes pulseMatch {
+  to {
+    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.25), 0 18px 42px rgba(0, 0, 0, 0.4);
+  }
+}
+
+.skill-node--foundation { --node-color: #67e8f9; }
+.skill-node--beginner { --node-color: #38bdf8; }
+.skill-node--intermediate { --node-color: #818cf8; }
+.skill-node--advanced { --node-color: #a78bfa; }
+.skill-node--elite { --node-color: #e879f9; }
+
+.skill-node__icon {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--node-color) 24%, transparent), rgba(30, 41, 77, 0.2));
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--node-color) 8%, transparent);
+}
+
+.analyzer-badge {
+  color: #67e8f9;
+}
+
+.skill-handle {
+  border-color: #050b18;
+}
+
+.skill-detail {
+  border-color: rgba(96, 165, 250, 0.2);
+  background: rgba(5, 12, 27, 0.98);
+  box-shadow: -20px 0 64px rgba(0, 0, 0, 0.48), 0 0 48px rgba(37, 99, 235, 0.06);
+}
+
+.branch-chip--foundation { color: #67e8f9; }
+.branch-chip--push { color: #818cf8; }
+.branch-chip--pull { color: #38bdf8; }
+.branch-chip--balance { color: #c084fc; }
+.branch-chip--core { color: #60a5fa; }
+.branch-chip--legs { color: #2dd4bf; }
+.branch-chip--mobility { color: #22d3ee; }
+
+.primary-button {
+  color: #020617;
+  border-color: #67e8f9;
+  background: linear-gradient(135deg, #67e8f9 0%, #38bdf8 45%, #6366f1 100%);
+  box-shadow: 0 8px 24px rgba(56, 189, 248, 0.17);
+}
+
+.primary-button:hover {
+  box-shadow: 0 11px 30px rgba(56, 189, 248, 0.24), 0 0 22px rgba(99, 102, 241, 0.14);
+}
+
+.secondary-button {
+  border-color: rgba(96, 165, 250, 0.2);
+  background: rgba(30, 64, 175, 0.08);
+}
+
+.exercise-select select {
+  border-color: rgba(96, 165, 250, 0.2);
+  background: #071126;
+}
+
+.source-tabs button.active {
+  color: #e0f2fe;
+  border-color: rgba(56, 189, 248, 0.3);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(99, 102, 241, 0.13));
+}
+
+.video-stage,
+.score-ring {
+  border-color: rgba(96, 165, 250, 0.18);
+  background: #020617;
+}
+
+.score-ring--good {
+  border-color: #22d3ee;
+  box-shadow: 0 0 28px rgba(34, 211, 238, 0.2);
+}
+
+.main-cue {
+  border-left-color: #38bdf8;
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.12), rgba(99, 102, 241, 0.07));
+}
+
+.main-cue p {
+  color: #bdd7ee;
+}
+
+.metric {
+  border-color: rgba(129, 140, 248, 0.16);
+  background: rgba(67, 56, 202, 0.06);
+}
+
+.metric.is-good {
+  border-color: rgba(34, 211, 238, 0.18);
+  background: rgba(8, 145, 178, 0.07);
+}
+
+.tracked-card span {
+  border: 1px solid rgba(96, 165, 250, 0.09);
+  background: rgba(30, 64, 175, 0.08);
+}
+
+.about-grid article {
+  border-color: rgba(96, 165, 250, 0.16);
+  background: linear-gradient(145deg, rgba(10, 21, 45, 0.76), rgba(5, 11, 25, 0.66));
+}
+
+.scope-note {
+  border: 1px solid rgba(56, 189, 248, 0.12);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.09), rgba(99, 102, 241, 0.07));
+}
+
+.scope-note p {
+  color: #aac7df;
+}
