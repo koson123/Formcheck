@@ -19,21 +19,21 @@ const nodeTypes = { skill: SkillNode, section: SectionNode }
 type TreeFlowNode = SectionFlowNode | SkillFlowNode
 
 const branchColors: Record<SkillCategory, string> = {
-  foundation: '#9ee6c1',
-  push: '#f3a6b8',
-  pull: '#98c7ff',
-  balance: '#d2b4ff',
-  core: '#f8d778',
-  legs: '#9ee7a9',
-  mobility: '#86dfd5'
+  foundation: '#67e8f9',
+  push: '#818cf8',
+  pull: '#38bdf8',
+  balance: '#c084fc',
+  core: '#60a5fa',
+  legs: '#2dd4bf',
+  mobility: '#22d3ee'
 }
 
 const difficultyColors: Record<Difficulty, string> = {
-  Foundation: '#9ee6c1',
-  Beginner: '#a8d8ff',
-  Intermediate: '#d2b4ff',
-  Advanced: '#f3a6b8',
-  Elite: '#f8d778'
+  Foundation: '#67e8f9',
+  Beginner: '#38bdf8',
+  Intermediate: '#818cf8',
+  Advanced: '#a78bfa',
+  Elite: '#e879f9'
 }
 
 const sectionWidth = 236
@@ -134,14 +134,14 @@ export function SkillTree({ onAnalyze }: Props) {
         animated: false,
         markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
         style: {
-          stroke: source ? branchColors[source.category] : '#718096',
+          stroke: source ? branchColors[source.category] : '#64748b',
           strokeWidth: sameSection ? 2.4 : 1.6,
-          opacity: sameSection ? 0.8 : 0.48
+          opacity: sameSection ? 0.82 : 0.5
         },
         zIndex: 1,
         label: source && target && source.category !== target.category ? 'prerequisite' : undefined,
-        labelStyle: { fill: '#8090a6', fontSize: 9 },
-        labelBgStyle: { fill: '#09111e', fillOpacity: 0.9 }
+        labelStyle: { fill: '#8aa4c8', fontSize: 9 },
+        labelBgStyle: { fill: '#071126', fillOpacity: 0.94 }
       }
     }), [visibleSections, visibleSkillIds])
 
@@ -193,7 +193,7 @@ export function SkillTree({ onAnalyze }: Props) {
           elementsSelectable
           proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Lines} gap={32} size={0.6} color="#1d2b3c" />
+          <Background variant={BackgroundVariant.Lines} gap={32} size={0.6} color="#16294a" />
           <Controls showInteractive={false} />
         </ReactFlow>
       </div>
