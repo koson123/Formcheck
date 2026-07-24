@@ -28,6 +28,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "icon": ["icons/icon.ico"],
     "shortDescription": "Offline calisthenics skill tree and form checker",
     "longDescription": "Explore calisthenics progressions and receive local pose-based form feedback from a webcam or recorded video.",
     "windows": {
