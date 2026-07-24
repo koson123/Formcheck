@@ -1,0 +1,36 @@
+name: Verify Formcheck v0.1.0 release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - docs/release-verify-trigger.md
+
+permissions:
+  contents: read
+
+jobs:
+  verify-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verify release and attached files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_json="$(gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" --json tagName,assets,url)"
+          echo "$release_json" | jq -e '.tagName == "v0.1.0"' >/dev/null
+
+          for asset in \
+            Formcheck_0.1.0_x64-setup.exe \
+            Formcheck_0.1.0_x64_en-US.msi \
+            Formcheck-Windows-v0.1.0.zip
+          do
+            echo "$release_json" | jq -e --arg asset "$asset" 'any(.assets[]; .name == $asset)' >/dev/null
+          done
+
+          echo "$release_json" | jq -r '"Verified release: " + .url'
+          echo "$release_json" | jq -r '.assets[].name'
