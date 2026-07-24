@@ -5,8 +5,7 @@ import {
   Controls,
   MarkerType,
   ReactFlow,
-  type Edge,
-  type NodeMouseHandler
+  type Edge
 } from '@xyflow/react'
 import { Search, Video, X } from 'lucide-react'
 import { skillById, skillLinks } from '../data/skills'
@@ -16,6 +15,8 @@ import { SectionNode, type SectionFlowNode } from './SectionNode'
 import { SkillNode, type SkillFlowNode } from './SkillNode'
 
 const nodeTypes = { skill: SkillNode, section: SectionNode }
+
+type TreeFlowNode = SectionFlowNode | SkillFlowNode
 
 const branchColors: Record<SkillCategory, string> = {
   foundation: '#9ee6c1',
@@ -63,7 +64,7 @@ export function SkillTree({ onAnalyze }: Props) {
     [visibleSections]
   )
 
-  const nodes = useMemo<Array<SectionFlowNode | SkillFlowNode>>(() => {
+  const nodes = useMemo<TreeFlowNode[]>(() => {
     const sectionNodes: SectionFlowNode[] = []
     const skillNodes: SkillFlowNode[] = []
 
@@ -144,10 +145,6 @@ export function SkillTree({ onAnalyze }: Props) {
       }
     }), [visibleSections, visibleSkillIds])
 
-  const onNodeClick: NodeMouseHandler<SkillFlowNode> = (_, node) => {
-    setSelectedSkill(skillById.get(node.id) ?? null)
-  }
-
   return (
     <section className="workspace tree-workspace">
       <header className="workspace-header tree-header">
@@ -180,11 +177,14 @@ export function SkillTree({ onAnalyze }: Props) {
       </aside>
 
       <div className="tree-stage tree-stage--columns">
-        <ReactFlow
+        <ReactFlow<TreeFlowNode>
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
-          onNodeClick={onNodeClick}
+          onNodeClick={(_, node) => {
+            if (node.type !== 'skill') return
+            setSelectedSkill(skillById.get(node.id) ?? null)
+          }}
           fitView
           fitViewOptions={{ padding: 0.14, minZoom: 0.25, maxZoom: 0.72 }}
           minZoom={0.18}
