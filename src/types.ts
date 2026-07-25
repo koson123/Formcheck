@@ -11,6 +11,8 @@ export type SkillCategory =
 
 export type Difficulty = 'Foundation' | 'Beginner' | 'Intermediate' | 'Advanced' | 'Elite'
 
+export type SkillProgressStatus = 'locked' | 'unlocked' | 'in-progress' | 'mastered'
+
 export type Skill = {
   id: string
   name: string

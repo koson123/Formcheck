@@ -1,67 +1,152 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { Video } from 'lucide-react'
-import type { Difficulty, SkillCategory } from '../types'
+import type { Difficulty, SkillCategory, SkillProgressStatus } from '../types'
 
 type SkillNodeData = {
   label: string
+  skillId: string
   category: SkillCategory
   difficulty: Difficulty
   analyzer: boolean
   matched: boolean
+  dimmed: boolean
+  pathActive: boolean
+  status: SkillProgressStatus
 }
 
 export type SkillFlowNode = Node<SkillNodeData, 'skill'>
 
-const categoryLabels: Record<SkillCategory, string> = {
-  foundation: 'Foundation',
-  push: 'Push',
-  pull: 'Pull',
-  balance: 'Balance',
-  core: 'Core',
-  legs: 'Legs',
-  mobility: 'Mobility'
-}
-
 export function SkillNode({ data, selected }: NodeProps<SkillFlowNode>) {
-  const difficultyClass = data.difficulty.toLowerCase()
-
   return (
     <div
-      className={`skill-node skill-node--${data.category} skill-node--${difficultyClass} ${selected ? 'is-selected' : ''} ${data.matched ? 'is-match' : ''}`}
-      aria-label={`${data.label}, ${data.difficulty}`}
+      className={[
+        'skill-node',
+        'organic-skill-node',
+        `organic-skill-node--${data.status}`,
+        selected ? 'is-selected' : '',
+        data.matched ? 'is-match' : '',
+        data.dimmed ? 'is-dimmed' : '',
+        data.pathActive ? 'is-path-active' : ''
+      ].filter(Boolean).join(' ')}
+      aria-label={`${data.label}, ${data.difficulty}, ${statusLabel(data.status)}`}
+      title={`${data.label} · ${data.difficulty} · ${statusLabel(data.status)}`}
     >
-      <Handle type="target" position={Position.Top} className="skill-handle" />
-      <div className="skill-node__icon" aria-hidden="true">
-        <MovementGlyph category={data.category} />
+      <Handle type="target" position={Position.Top} className="skill-handle organic-skill-handle" />
+      <div className="organic-skill-node__ring">
+        <MovementGlyph skillId={data.skillId} category={data.category} />
       </div>
-      <div className="skill-node__label">
-        <strong>{data.label}</strong>
-        <span>{categoryLabels[data.category]}</span>
-      </div>
-      <div className="skill-node__footer">
-        <span className="difficulty-chip">{data.difficulty}</span>
-        {data.analyzer ? <span className="analyzer-badge" title="Form checker supported"><Video size={12} /> Form</span> : null}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="skill-handle" />
+      {data.analyzer ? (
+        <span className="organic-skill-node__form" title="Form checker supported">
+          <Video size={10} />
+        </span>
+      ) : null}
+      <span className="organic-skill-node__label">{data.label}</span>
+      <Handle type="source" position={Position.Bottom} className="skill-handle organic-skill-handle" />
     </div>
   )
 }
 
-function MovementGlyph({ category }: { category: SkillCategory }) {
-  const pose = category === 'pull'
-    ? 'M6 5h12M9 5l3 5 3-5M12 10v6M12 16l-4 4M12 16l4 4'
-    : category === 'balance'
-      ? 'M12 3v6M12 6l-5 5M12 6l5 5M12 9v7M12 16l-4 5M12 16l4 5'
-      : category === 'legs'
-        ? 'M12 4v7M12 7l-5 4M12 7l5 4M12 11l-4 9M12 11l5 8'
-        : category === 'core'
-          ? 'M4 12h7M11 12l4-5M11 12l5 5M15 7h5M16 17h4'
-          : 'M4 15h16M8 15l4-7 4 7M12 8V4'
+function statusLabel(status: SkillProgressStatus) {
+  if (status === 'in-progress') return 'In progress'
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
+function MovementGlyph({ skillId, category }: { skillId: string; category: SkillCategory }) {
+  const glyph = glyphForSkill(skillId, category)
 
   return (
     <svg viewBox="0 0 24 24" role="presentation">
-      <circle cx="12" cy="3" r="1.5" />
-      <path d={pose} />
+      <circle cx={glyph.headX} cy={glyph.headY} r="1.45" />
+      <path d={glyph.path} />
     </svg>
   )
+}
+
+function glyphForSkill(skillId: string, category: SkillCategory) {
+  if (skillId.includes('handstand') || skillId === 'press-handstand') {
+    return {
+      headX: 12,
+      headY: 20,
+      path: 'M12 18v-7M12 15l-5-5M12 15l5-5M12 11V5M12 5L8 2M12 5l4-3'
+    }
+  }
+
+  if (skillId.includes('planche') || skillId === 'frog-stand') {
+    return {
+      headX: 4,
+      headY: 10,
+      path: 'M2 15h20M6 14l5-5 5 2 5 0M11 9l-2 5M16 11l-1 4'
+    }
+  }
+
+  if (skillId.includes('lever')) {
+    return {
+      headX: 4,
+      headY: 10,
+      path: 'M2 4h20M7 4L5 9l5 3h7l5 0M10 12l-3 4M17 12l4 3'
+    }
+  }
+
+  if (
+    skillId.includes('pull-up') ||
+    skillId.includes('muscle-up') ||
+    skillId === 'active-hang' ||
+    skillId === 'scap-pull'
+  ) {
+    return {
+      headX: 12,
+      headY: 8,
+      path: 'M4 3h16M8 3l4 4 4-4M12 9v6M12 15l-4 6M12 15l4 6'
+    }
+  }
+
+  if (skillId.includes('lsit') || skillId === 'vsit' || skillId === 'manna') {
+    return {
+      headX: 8,
+      headY: 8,
+      path: 'M4 19h16M8 10v7M8 13l-4 4M8 13l5 3M13 16h8'
+    }
+  }
+
+  if (
+    skillId.includes('squat') ||
+    skillId.includes('pistol') ||
+    skillId.includes('shrimp')
+  ) {
+    return {
+      headX: 12,
+      headY: 4,
+      path: 'M12 6v6M12 9l-5 3M12 9l5 3M12 12l-5 7M12 12l6 4'
+    }
+  }
+
+  if (skillId.includes('push-up') || skillId === 'plank') {
+    return {
+      headX: 4,
+      headY: 10,
+      path: 'M2 16h20M6 11l5 2 6 0 5 2M11 13l-2 4M17 13l2 4'
+    }
+  }
+
+  if (skillId.includes('dip')) {
+    return {
+      headX: 12,
+      headY: 5,
+      path: 'M4 9v12M20 9v12M12 7v7M12 10L7 9M12 10l5-1M12 14l-4 7M12 14l4 7'
+    }
+  }
+
+  if (category === 'core' || category === 'mobility' || category === 'foundation') {
+    return {
+      headX: 5,
+      headY: 11,
+      path: 'M2 16h20M7 12l5 2 6-1M12 14l-3 4M18 13l3 4'
+    }
+  }
+
+  return {
+    headX: 12,
+    headY: 4,
+    path: 'M12 6v7M12 9l-5 4M12 9l5 4M12 13l-4 8M12 13l4 8'
+  }
 }
