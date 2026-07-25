@@ -1,0 +1,174 @@
+/* Precision alignment pass for controls and compact UI elements. */
+
+button,
+.primary-button,
+.secondary-button,
+.danger-button,
+.file-button {
+  line-height: 1.1;
+}
+
+button > svg,
+.primary-button > svg,
+.secondary-button > svg,
+.danger-button > svg,
+.file-button > svg,
+.brand-mark > svg,
+.privacy-card > svg,
+.positive-list svg,
+.analyzer-badge svg,
+.organic-skill-node__form svg {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.main-nav button {
+  min-height: 64px;
+  align-items: center;
+  padding-block: 11px;
+}
+
+.main-nav button > svg {
+  width: 20px;
+  height: 20px;
+  align-self: center;
+}
+
+.main-nav button > span {
+  min-width: 0;
+  align-content: center;
+  justify-items: start;
+}
+
+.main-nav strong,
+.main-nav small {
+  line-height: 1.2;
+}
+
+.search-box {
+  min-height: 44px;
+}
+
+.search-box > svg {
+  flex: 0 0 18px;
+}
+
+.search-box button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.search-box button:hover {
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.tree-filter-bar button,
+.source-tabs button,
+.tree-reset-button,
+.tree-progress-control button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  line-height: 1;
+  text-align: center;
+}
+
+.source-tabs button {
+  min-height: 40px;
+}
+
+.primary-button,
+.secondary-button,
+.danger-button,
+.file-button {
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.camera-actions {
+  align-items: center;
+}
+
+.icon-button,
+.skill-detail__close {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.react-flow__controls-button {
+  display: grid !important;
+  place-items: center !important;
+  width: 34px !important;
+  height: 34px !important;
+  padding: 0 !important;
+}
+
+.react-flow__controls-button svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.organic-skill-node__ring,
+.organic-skill-node__form {
+  display: grid;
+  place-items: center;
+}
+
+.organic-skill-node__form svg {
+  width: 10px;
+  height: 10px;
+}
+
+.branch-chip,
+.progress-status,
+.detail-meta span,
+.positive-list span,
+.tracked-card span,
+.analyzer-badge {
+  align-items: center;
+  justify-content: center;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.score-ring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1;
+}
+
+.score-ring strong,
+.score-ring span {
+  margin: 0;
+  line-height: 1;
+}
+
+.score-ring span {
+  margin-top: 2px;
+}
+
+@media (max-width: 820px) {
+  .main-nav button {
+    min-height: 48px;
+    padding: 0;
+  }
+
+  .main-nav button > svg {
+    margin: auto;
+  }
+}
