@@ -54,6 +54,41 @@ export type Landmark = {
   presence?: number
 }
 
+export type TrackedSide = 'left' | 'right'
+
+export type CalibrationPhase =
+  | 'finding'
+  | 'framing'
+  | 'orientation'
+  | 'stability'
+  | 'start-position'
+  | 'ready'
+
+export type CalibrationCheckId = 'visibility' | 'framing' | 'orientation' | 'stability' | 'start-position'
+
+export type CalibrationCheck = {
+  id: CalibrationCheckId
+  label: string
+  passed: boolean
+  detail: string
+}
+
+export type CalibrationState = {
+  phase: CalibrationPhase
+  calibrated: boolean
+  trackingValid: boolean
+  recommendedSide: TrackedSide | null
+  stableFrames: number
+  startFrames: number
+  invalidFrames: number
+  lastCenter: { x: number; y: number } | null
+  lastScale: number | null
+  bodyScale: number | null
+  progress: number
+  message: string
+  checks: CalibrationCheck[]
+}
+
 export type RepPhase = 'waiting' | 'ready' | 'descending' | 'bottom' | 'ascending'
 
 export type RepCounterState = {
