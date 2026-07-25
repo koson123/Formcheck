@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, CheckCircle2, FileVideo, Play, RefreshCw, Square, Upload, Video } from 'lucide-react'
 import { exercises } from '../data/exercises'
+import { createCalibrationState, updateCalibration } from '../lib/calibration'
 import { analyzeForm, createAnalyzerMemory } from '../lib/formRules'
 import { clearPose, drawPose, getPoseLandmarker } from '../lib/pose'
-import type { AnalysisResult, ExerciseId } from '../types'
+import type { AnalysisResult, CalibrationState, ExerciseId } from '../types'
+import { CalibrationOverlay } from './CalibrationOverlay'
 
 type SourceMode = 'camera' | 'recording'
 
@@ -19,18 +21,23 @@ export function FormCheck({ initialExercise }: Props) {
   const [error, setError] = useState('')
   const [videoName, setVideoName] = useState('')
   const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [calibration, setCalibration] = useState<CalibrationState>(() => createCalibrationState())
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const frameRef = useRef<number | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const objectUrlRef = useRef<string | null>(null)
   const memoryRef = useRef(createAnalyzerMemory())
+  const calibrationRef = useRef(createCalibrationState())
+  const exerciseRef = useRef<ExerciseId>(initialExercise)
+  const sourceModeRef = useRef<SourceMode>('camera')
   const lastVideoTimeRef = useRef(-1)
   const selectedExercise = useMemo(() => exercises.find((exercise) => exercise.id === exerciseId) ?? exercises[0], [exerciseId])
 
   useEffect(() => {
-    memoryRef.current = createAnalyzerMemory()
-    setResult(null)
+    exerciseRef.current = exerciseId
+    resetAnalysis()
+    resetCalibration()
   }, [exerciseId])
 
   useEffect(() => () => stopAll(), [])
@@ -40,6 +47,7 @@ export function FormCheck({ initialExercise }: Props) {
     setError('')
     setLoading(true)
     setSourceMode('camera')
+    sourceModeRef.current = 'camera'
     try {
       await getPoseLandmarker()
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -50,8 +58,10 @@ export function FormCheck({ initialExercise }: Props) {
       if (!videoRef.current) return
       videoRef.current.srcObject = stream
       videoRef.current.muted = true
+      videoRef.current.controls = false
       await videoRef.current.play()
       resetAnalysis()
+      resetCalibration()
       setRunning(true)
       runAnalysisLoop()
     } catch (cause) {
@@ -68,6 +78,7 @@ export function FormCheck({ initialExercise }: Props) {
     setError('')
     setLoading(true)
     setSourceMode('recording')
+    sourceModeRef.current = 'recording'
     setVideoName(file.name)
     try {
       await getPoseLandmarker()
@@ -83,6 +94,7 @@ export function FormCheck({ initialExercise }: Props) {
         video.onerror = () => reject(new Error('The selected video could not be opened.'))
       })
       resetAnalysis()
+      resetCalibration()
       setRunning(true)
       await videoRef.current.play()
       runAnalysisLoop()
@@ -109,13 +121,33 @@ export function FormCheck({ initialExercise }: Props) {
           const landmarker = await getPoseLandmarker()
           const detection = landmarker.detectForVideo(video, performance.now())
           const landmarks = detection.landmarks[0]
+          const previousCalibration = calibrationRef.current
+
           if (landmarks?.length) {
             drawPose(canvas, landmarks, video.videoWidth, video.videoHeight)
-            const analysis = analyzeForm(exerciseId, landmarks, memoryRef.current)
-            memoryRef.current = analysis.memory
-            setResult(analysis)
+            const nextCalibration = updateCalibration(exerciseRef.current, landmarks, previousCalibration)
+            const becameReady = !previousCalibration.calibrated && nextCalibration.calibrated
+            calibrationRef.current = nextCalibration
+            setCalibration(nextCalibration)
+
+            if (becameReady) {
+              memoryRef.current = createAnalyzerMemory()
+              setResult(null)
+            }
+
+            if (nextCalibration.calibrated && nextCalibration.trackingValid) {
+              const analysis = analyzeForm(exerciseRef.current, landmarks, memoryRef.current)
+              memoryRef.current = analysis.memory
+              setResult(analysis)
+            } else {
+              setResult(null)
+            }
           } else {
             clearPose(canvas)
+            const nextCalibration = updateCalibration(exerciseRef.current, [], previousCalibration)
+            calibrationRef.current = nextCalibration
+            setCalibration(nextCalibration)
+            setResult(null)
           }
           lastVideoTimeRef.current = video.currentTime
         } catch (cause) {
@@ -123,7 +155,7 @@ export function FormCheck({ initialExercise }: Props) {
         }
       }
 
-      if (sourceMode === 'recording' && video.ended) {
+      if (sourceModeRef.current === 'recording' && video.ended) {
         setRunning(false)
         return
       }
@@ -138,6 +170,17 @@ export function FormCheck({ initialExercise }: Props) {
     setResult(null)
   }
 
+  function resetCalibration() {
+    const next = createCalibrationState()
+    calibrationRef.current = next
+    setCalibration(next)
+  }
+
+  function recalibrate() {
+    resetAnalysis()
+    resetCalibration()
+  }
+
   function stopAll() {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
     frameRef.current = null
@@ -146,22 +189,24 @@ export function FormCheck({ initialExercise }: Props) {
     if (videoRef.current) {
       videoRef.current.pause()
       videoRef.current.srcObject = null
-      videoRef.current.controls = sourceMode === 'recording'
+      videoRef.current.controls = sourceModeRef.current === 'recording'
     }
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current)
       objectUrlRef.current = null
     }
     clearPose(canvasRef.current)
+    resetAnalysis()
+    resetCalibration()
     setRunning(false)
   }
 
   function switchMode(mode: SourceMode) {
     stopAll()
     setSourceMode(mode)
+    sourceModeRef.current = mode
     setError('')
     setVideoName('')
-    resetAnalysis()
   }
 
   return (
@@ -170,7 +215,7 @@ export function FormCheck({ initialExercise }: Props) {
         <div>
           <span className="eyebrow">Offline camera coach</span>
           <h1>Check your form</h1>
-          <p>Select the movement first so every angle and coaching cue is specific to that exercise.</p>
+          <p>Formcheck verifies the camera setup and starting position before it begins counting or timing.</p>
         </div>
         <label className="exercise-select">
           <span>Exercise</span>
@@ -194,6 +239,7 @@ export function FormCheck({ initialExercise }: Props) {
           <div className="video-stage">
             <video ref={videoRef} playsInline className="analysis-video" />
             <canvas ref={canvasRef} className="pose-overlay" />
+            {running ? <CalibrationOverlay calibration={calibration} /> : null}
             {!running && !loading ? (
               <div className="video-placeholder">
                 {sourceMode === 'camera' ? <Camera size={54} /> : <Upload size={54} />}
@@ -217,7 +263,12 @@ export function FormCheck({ initialExercise }: Props) {
                 <input type="file" accept="video/*" onChange={(event) => loadRecording(event.target.files?.[0])} />
               </label>
             )}
-            <button className="secondary-button" onClick={resetAnalysis} disabled={!running}><RefreshCw size={17} /> Reset count</button>
+            <button className="secondary-button" onClick={resetAnalysis} disabled={!running || !calibration.calibrated}>
+              <RefreshCw size={17} /> Reset count
+            </button>
+            <button className="secondary-button" onClick={recalibrate} disabled={!running}>
+              <RefreshCw size={17} /> Recalibrate
+            </button>
           </div>
           {error ? <div className="error-banner">{error}</div> : null}
         </div>
@@ -254,11 +305,20 @@ export function FormCheck({ initialExercise }: Props) {
                 ))}
               </div>
             </>
+          ) : running ? (
+            <div className="waiting-analysis calibration-waiting">
+              <Video size={40} />
+              <strong>{calibration.calibrated ? 'Tracking paused' : 'Calibrating camera'}</strong>
+              <p>{calibration.message}</p>
+              <div className="calibration-waiting__progress">
+                <span style={{ width: `${calibration.progress}%` }} />
+              </div>
+            </div>
           ) : (
             <div className="waiting-analysis">
               <Video size={40} />
               <strong>Start a camera or video</strong>
-              <p>Live measurements and the most important correction will appear here.</p>
+              <p>Calibration will verify the setup before live measurements begin.</p>
             </div>
           )}
 
