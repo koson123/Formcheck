@@ -5,6 +5,7 @@ import './styles.css'
 import './cool-theme.css'
 import './tree.css'
 import './alignment.css'
+import './camera-calibration.css'
 import App from './App'
 
 createRoot(document.getElementById('root')!).render(
