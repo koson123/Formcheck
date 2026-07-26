@@ -1,0 +1,146 @@
+name: Publish Formcheck v0.5.0
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-v0.5.0.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - docs/release-v0.5.0-trigger.md
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-formcheck-v0.5.0
+  cancel-in-progress: true
+
+jobs:
+  publish-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Test landmark stabilization and existing camera systems
+        run: npm test
+
+      - name: Build tested Windows installers
+        run: npm run build
+
+      - name: Prepare release files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+
+          $exe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          $msi = Get-ChildItem "src-tauri/target/release/bundle/msi/*.msi" | Select-Object -First 1
+
+          if (-not $exe) { throw "NSIS installer was not created." }
+          if (-not $msi) { throw "MSI installer was not created." }
+
+          Copy-Item $exe.FullName "release/Formcheck_0.5.0_x64-setup.exe"
+          Copy-Item $msi.FullName "release/Formcheck_0.5.0_x64_en-US.msi"
+          Compress-Archive -Path "release/*" -DestinationPath "Formcheck-Windows-v0.5.0.zip" -Force
+
+          @'
+          # Formcheck v0.5.0
+
+          Adaptive pose-landmark stabilization.
+
+          ## Steadier tracking
+
+          - Adds one shared stabilization layer directly after MediaPipe pose detection
+          - Pose drawing, calibration, side locking, form measurements, and rep counting now use the same filtered landmarks
+          - Small stationary landmark jitter is strongly damped
+          - Deliberate exercise movement remains responsive through motion-adaptive filtering
+          - Screen coordinates and depth coordinates are both stabilized
+
+          ## Confidence and outlier handling
+
+          - Raw visibility and presence confidence remain available to readiness checks
+          - Brief low-confidence joints retain stable geometry instead of snapping around the image
+          - One-frame landmark teleports are heavily damped
+          - Stale positions reset after sustained pose loss or a long processing gap
+
+          ## Validation
+
+          - Added tests for stationary jitter, deliberate movement, one-frame outliers, low-confidence joints, stale tracking reset, and depth smoothing
+          - Existing calibration, side-lock, false-rep, and skill-map tests remain green
+          - Windows NSIS and MSI installers are rebuilt from the tested source
+
+          ## Installation
+
+          Most users should download `Formcheck_0.5.0_x64-setup.exe`.
+
+          The `.msi` is provided as an alternative Windows Installer package. The ZIP contains both installers.
+
+          Windows may display an unknown-publisher warning because this early release is not code-signed.
+          '@ | Set-Content -Path release-notes.md
+
+      - name: Create or update GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v0.5.0 --repo "$env:GITHUB_REPOSITORY" *> $null
+          $releaseExists = $LASTEXITCODE -eq 0
+
+          if ($releaseExists) {
+            gh release edit v0.5.0 --repo "$env:GITHUB_REPOSITORY" --title "Formcheck v0.5.0" --notes-file release-notes.md --latest
+            gh release upload v0.5.0 `
+              release/Formcheck_0.5.0_x64-setup.exe `
+              release/Formcheck_0.5.0_x64_en-US.msi `
+              Formcheck-Windows-v0.5.0.zip `
+              --repo "$env:GITHUB_REPOSITORY" --clobber
+          } else {
+            gh release create v0.5.0 `
+              release/Formcheck_0.5.0_x64-setup.exe `
+              release/Formcheck_0.5.0_x64_en-US.msi `
+              Formcheck-Windows-v0.5.0.zip `
+              --repo "$env:GITHUB_REPOSITORY" `
+              --target main `
+              --title "Formcheck v0.5.0" `
+              --notes-file release-notes.md `
+              --latest
+          }
+
+      - name: Verify published release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $release = gh release view v0.5.0 --repo "$env:GITHUB_REPOSITORY" --json tagName,assets | ConvertFrom-Json
+          $names = @($release.assets | ForEach-Object { $_.name })
+          $expected = @(
+            "Formcheck_0.5.0_x64-setup.exe",
+            "Formcheck_0.5.0_x64_en-US.msi",
+            "Formcheck-Windows-v0.5.0.zip"
+          )
+
+          foreach ($name in $expected) {
+            if ($names -notcontains $name) { throw "Release asset missing: $name" }
+          }
+
+          if ($release.tagName -ne "v0.5.0") { throw "Unexpected release tag." }
+          Write-Host "Verified release assets: $($names -join ', ')"
