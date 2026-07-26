@@ -12,6 +12,10 @@ const RIGHT = { shoulder: 12, elbow: 14, wrist: 16, hip: 24, knee: 26, ankle: 28
 const STABLE_FRAMES_REQUIRED = 12
 const START_FRAMES_REQUIRED = 12
 const INVALID_FRAMES_BEFORE_RECALIBRATION = 12
+const SIDE_VISIBILITY_MIN = 0.58
+const SIDE_SWITCH_QUALITY_MIN = 0.68
+const SIDE_SWITCH_MARGIN = 0.12
+const SIDE_LOSS_FRAMES_BEFORE_SWITCH = 10
 
 type SidePoints = {
   shoulder: Landmark
@@ -28,6 +32,10 @@ export function createCalibrationState(): CalibrationState {
     calibrated: false,
     trackingValid: false,
     recommendedSide: null,
+    lockedSide: null,
+    sideLossFrames: 0,
+    sideSwitched: false,
+    sideSwitchPending: false,
     stableFrames: 0,
     startFrames: 0,
     invalidFrames: 0,
@@ -43,7 +51,8 @@ export function createCalibrationState(): CalibrationState {
 export function updateCalibration(
   exercise: ExerciseId,
   landmarks: Landmark[],
-  current: CalibrationState
+  current: CalibrationState,
+  movementActive = false
 ): CalibrationState {
   if (landmarks.length < 29) {
     return loseCurrentFrame(current, 'finding', 'Step fully into view so Formcheck can find your body.', initialChecks())
@@ -54,8 +63,37 @@ export function updateCalibration(
   const leftQuality = sideVisibility(left)
   const rightQuality = sideVisibility(right)
   const recommendedSide: TrackedSide = leftQuality >= rightQuality ? 'left' : 'right'
-  const points = recommendedSide === 'left' ? left : right
-  const visibility = Math.max(leftQuality, rightQuality)
+
+  let lockedSide = current.lockedSide
+  let sideLossFrames = 0
+  let sideSwitched = false
+  let sideSwitchPending = false
+
+  if (current.calibrated && lockedSide) {
+    const otherSide = oppositeSide(lockedSide)
+    const lockedQuality = lockedSide === 'left' ? leftQuality : rightQuality
+    const otherQuality = otherSide === 'left' ? leftQuality : rightQuality
+    const lockedSideLost = lockedQuality < SIDE_VISIBILITY_MIN
+    const otherSideClearlyBetter = otherQuality >= SIDE_SWITCH_QUALITY_MIN &&
+      otherQuality >= lockedQuality + SIDE_SWITCH_MARGIN
+
+    if (lockedSideLost && otherSideClearlyBetter) {
+      sideLossFrames = current.sideLossFrames + 1
+      if (sideLossFrames >= SIDE_LOSS_FRAMES_BEFORE_SWITCH) {
+        if (movementActive) {
+          sideSwitchPending = true
+        } else {
+          lockedSide = otherSide
+          sideLossFrames = 0
+          sideSwitched = true
+        }
+      }
+    }
+  }
+
+  const selectedSide = lockedSide ?? recommendedSide
+  const points = selectedSide === 'left' ? left : right
+  const visibility = selectedSide === 'left' ? leftQuality : rightQuality
   const allRequiredVisible = Object.values(points).every((point) => visible(point) >= 0.55)
   const visibilityPassed = visibility >= 0.68 && allRequiredVisible
 
@@ -86,18 +124,35 @@ export function updateCalibration(
     visibilityPassed,
     framingPassed,
     orientationPassed,
-    stabilityPassed,
-    startPassed,
+    current.calibrated ? true : stabilityPassed,
+    current.calibrated ? true : startPassed,
     visibility,
     bodyScale,
     sideRatio,
-    stableFrames,
-    startFrames
+    current.calibrated ? STABLE_FRAMES_REQUIRED : stableFrames,
+    current.calibrated ? START_FRAMES_REQUIRED : startFrames
   )
 
-  const currentFrameValid = visibilityPassed && framingPassed && orientationPassed && startPosePassed
-
   if (current.calibrated) {
+    if (sideSwitchPending) {
+      return {
+        ...current,
+        trackingValid: false,
+        recommendedSide,
+        lockedSide,
+        sideLossFrames,
+        sideSwitched: false,
+        sideSwitchPending: true,
+        invalidFrames: 0,
+        lastCenter: center,
+        lastScale: bodyScale,
+        bodyScale,
+        message: `Tracking paused: the ${lockedSide} side was lost. Resetting the current attempt before switching sides.`,
+        checks
+      }
+    }
+
+    const currentFrameValid = visibilityPassed && framingPassed && orientationPassed
     if (currentFrameValid) {
       return {
         ...current,
@@ -105,6 +160,10 @@ export function updateCalibration(
         calibrated: true,
         trackingValid: true,
         recommendedSide,
+        lockedSide,
+        sideLossFrames,
+        sideSwitched,
+        sideSwitchPending: false,
         stableFrames: STABLE_FRAMES_REQUIRED,
         startFrames: START_FRAMES_REQUIRED,
         invalidFrames: 0,
@@ -112,7 +171,9 @@ export function updateCalibration(
         lastScale: bodyScale,
         bodyScale,
         progress: 100,
-        message: 'Camera ready. Formcheck is now analyzing your movement.',
+        message: sideSwitched
+          ? `Tracking switched to the ${lockedSide} side after sustained visibility loss.`
+          : `Camera ready. Tracking is locked to the ${lockedSide} side.`,
         checks: checks.map((check) => ({ ...check, passed: true }))
       }
     }
@@ -123,11 +184,15 @@ export function updateCalibration(
         ...current,
         trackingValid: false,
         recommendedSide,
+        lockedSide,
+        sideLossFrames,
+        sideSwitched: false,
+        sideSwitchPending: false,
         invalidFrames,
         lastCenter: center,
         lastScale: bodyScale,
         bodyScale,
-        message: pauseMessage(visibilityPassed, framingPassed, orientationPassed, startPosePassed),
+        message: pauseMessage(visibilityPassed, framingPassed, orientationPassed, lockedSide),
         checks
       }
     }
@@ -141,6 +206,10 @@ export function updateCalibration(
     calibrated,
     trackingValid: calibrated,
     recommendedSide,
+    lockedSide: calibrated ? selectedSide : null,
+    sideLossFrames: 0,
+    sideSwitched: false,
+    sideSwitchPending: false,
     stableFrames,
     startFrames,
     invalidFrames: 0,
@@ -149,7 +218,7 @@ export function updateCalibration(
     bodyScale,
     progress: calibrationProgress(visibilityPassed, framingPassed, orientationPassed, stableFrames, startFrames),
     message: calibrated
-      ? 'Calibration complete. Formcheck is ready to analyze.'
+      ? `Calibration complete. Tracking is locked to the ${selectedSide} side.`
       : phaseMessage(phase, exercise, bodyScale, insideFrame),
     checks
   }
@@ -165,8 +234,12 @@ function loseCurrentFrame(
     return {
       ...current,
       trackingValid: false,
+      sideSwitched: false,
+      sideSwitchPending: false,
       invalidFrames: current.invalidFrames + 1,
-      message: 'Tracking paused. Move fully back into the camera view.',
+      message: current.lockedSide
+        ? `Tracking paused. Move your ${current.lockedSide} side fully back into view.`
+        : 'Tracking paused. Move fully back into the camera view.',
       checks
     }
   }
@@ -189,6 +262,10 @@ function readSide(landmarks: Landmark[], side: TrackedSide): SidePoints {
     knee: landmarks[indices.knee],
     ankle: landmarks[indices.ankle]
   }
+}
+
+function oppositeSide(side: TrackedSide): TrackedSide {
+  return side === 'left' ? 'right' : 'left'
 }
 
 function sideVisibility(points: SidePoints) {
@@ -291,11 +368,16 @@ function startPoseMessage(exercise: ExerciseId) {
   }
 }
 
-function pauseMessage(visibility: boolean, framing: boolean, orientation: boolean, startPose: boolean) {
-  if (!visibility) return 'Tracking paused: required joints are not visible.'
-  if (!framing) return 'Tracking paused: part of your body left the frame.'
+function pauseMessage(
+  visibility: boolean,
+  framing: boolean,
+  orientation: boolean,
+  lockedSide: TrackedSide | null
+) {
+  const side = lockedSide ? `${lockedSide} ` : ''
+  if (!visibility) return `Tracking paused: required ${side}side joints are not visible.`
+  if (!framing) return `Tracking paused: part of your ${side}side left the frame.`
   if (!orientation) return 'Tracking paused: return to a clear side view.'
-  if (!startPose) return 'Tracking paused: return to the exercise position.'
   return 'Tracking paused. Hold still briefly.'
 }
 

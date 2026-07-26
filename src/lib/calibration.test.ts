@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import type { Landmark } from '../types'
+import type { Landmark, TrackedSide } from '../types'
 import { createCalibrationState, updateCalibration } from './calibration'
+
+const SIDE_INDICES = {
+  left: [11, 13, 15, 23, 25, 27],
+  right: [12, 14, 16, 24, 26, 28]
+} satisfies Record<TrackedSide, number[]>
 
 function blankLandmarks(): Landmark[] {
   return Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, visibility: 0.1 }))
@@ -22,6 +27,13 @@ function pushUpPose(offsetX = 0): Landmark[] {
   return landmarks
 }
 
+function bottomPushUpPose(): Landmark[] {
+  const landmarks = pushUpPose()
+  landmarks[13] = { x: 0.38, y: 0.61, visibility: 0.96 }
+  landmarks[14] = { x: 0.39, y: 0.615, visibility: 0.92 }
+  return landmarks
+}
+
 function frontFacingPushUpPose(): Landmark[] {
   const landmarks = pushUpPose()
   landmarks[11] = { x: 0.28, y: 0.48, visibility: 0.96 }
@@ -29,6 +41,12 @@ function frontFacingPushUpPose(): Landmark[] {
   landmarks[23] = { x: 0.56, y: 0.49, visibility: 0.96 }
   landmarks[24] = { x: 0.76, y: 0.49, visibility: 0.96 }
   return landmarks
+}
+
+function withSideVisibility(landmarks: Landmark[], side: TrackedSide, visibility: number) {
+  const copy = landmarks.map((point) => ({ ...point }))
+  for (const index of SIDE_INDICES[side]) copy[index].visibility = visibility
+  return copy
 }
 
 function calibrate(frames: Landmark[][]) {
@@ -62,13 +80,70 @@ describe('camera readiness calibration', () => {
     expect(state.stableFrames).toBeLessThan(12)
   })
 
-  it('calibrates after a stable full-body side-view starting pose', () => {
+  it('calibrates and locks the strongest visible body side', () => {
     const state = calibrate(Array.from({ length: 30 }, () => pushUpPose()))
     expect(state.calibrated).toBe(true)
     expect(state.trackingValid).toBe(true)
     expect(state.phase).toBe('ready')
     expect(state.progress).toBe(100)
     expect(state.recommendedSide).toBe('left')
+    expect(state.lockedSide).toBe('left')
+  })
+
+  it('continues tracking after the user leaves the starting pose', () => {
+    let state = calibrate(Array.from({ length: 30 }, () => pushUpPose()))
+    state = updateCalibration('push-up', bottomPushUpPose(), state, true)
+
+    expect(state.calibrated).toBe(true)
+    expect(state.trackingValid).toBe(true)
+    expect(state.lockedSide).toBe('left')
+  })
+
+  it('does not switch sides because the opposite side becomes slightly clearer', () => {
+    let state = calibrate(Array.from({ length: 30 }, () => pushUpPose()))
+    const frame = withSideVisibility(withSideVisibility(pushUpPose(), 'left', 0.80), 'right', 0.99)
+
+    for (let index = 0; index < 20; index += 1) {
+      state = updateCalibration('push-up', frame, state)
+    }
+
+    expect(state.recommendedSide).toBe('right')
+    expect(state.lockedSide).toBe('left')
+    expect(state.sideLossFrames).toBe(0)
+    expect(state.sideSwitched).toBe(false)
+  })
+
+  it('switches only after sustained locked-side loss while no movement is active', () => {
+    let state = calibrate(Array.from({ length: 30 }, () => pushUpPose()))
+    const frame = withSideVisibility(withSideVisibility(pushUpPose(), 'left', 0.20), 'right', 0.96)
+
+    for (let index = 0; index < 9; index += 1) {
+      state = updateCalibration('push-up', frame, state, false)
+      expect(state.lockedSide).toBe('left')
+    }
+
+    state = updateCalibration('push-up', frame, state, false)
+    expect(state.lockedSide).toBe('right')
+    expect(state.sideSwitched).toBe(true)
+    expect(state.trackingValid).toBe(true)
+  })
+
+  it('requires the active attempt to reset before switching sides', () => {
+    let state = calibrate(Array.from({ length: 30 }, () => pushUpPose()))
+    const frame = withSideVisibility(withSideVisibility(pushUpPose(), 'left', 0.20), 'right', 0.96)
+
+    for (let index = 0; index < 10; index += 1) {
+      state = updateCalibration('push-up', frame, state, true)
+    }
+
+    expect(state.lockedSide).toBe('left')
+    expect(state.sideSwitchPending).toBe(true)
+    expect(state.trackingValid).toBe(false)
+
+    state = updateCalibration('push-up', frame, state, false)
+    expect(state.lockedSide).toBe('right')
+    expect(state.sideSwitched).toBe(true)
+    expect(state.sideSwitchPending).toBe(false)
   })
 
   it('briefly pauses before requiring full recalibration after tracking loss', () => {
@@ -84,5 +159,6 @@ describe('camera readiness calibration', () => {
 
     expect(state.calibrated).toBe(false)
     expect(state.phase).toBe('finding')
+    expect(state.lockedSide).toBe(null)
   })
 })

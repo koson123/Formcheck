@@ -78,6 +78,10 @@ export type CalibrationState = {
   calibrated: boolean
   trackingValid: boolean
   recommendedSide: TrackedSide | null
+  lockedSide: TrackedSide | null
+  sideLossFrames: number
+  sideSwitched: boolean
+  sideSwitchPending: boolean
   stableFrames: number
   startFrames: number
   invalidFrames: number
