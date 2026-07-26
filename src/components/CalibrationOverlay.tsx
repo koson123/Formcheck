@@ -39,9 +39,15 @@ export function CalibrationOverlay({ calibration }: Props) {
         ))}
       </div>
 
-      {calibration.recommendedSide ? (
+      {calibration.lockedSide ? (
         <div className="calibration-side-note">
-          Recommended tracking side: <strong>{calibration.recommendedSide}</strong>
+          Tracking side locked: <strong>{calibration.lockedSide}</strong>
+          {calibration.sideSwitchPending ? ' · finishing current attempt before switching' : ''}
+          {calibration.sideSwitched ? ' · side changed safely' : ''}
+        </div>
+      ) : calibration.recommendedSide ? (
+        <div className="calibration-side-note">
+          Calibrating strongest side: <strong>{calibration.recommendedSide}</strong>
         </div>
       ) : null}
     </div>
