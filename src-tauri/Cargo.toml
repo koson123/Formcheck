@@ -1,6 +1,6 @@
 [package]
 name = "formcheck"
-version = "0.4.0"
+version = "0.5.0"
 description = "Offline calisthenics skill tree and form checker"
 authors = ["Trevor Gardner"]
 edition = "2021"

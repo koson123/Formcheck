@@ -46,7 +46,7 @@ export default function App() {
             <p>No account, cloud upload, workout log, streak, XP, or subscription.</p>
           </div>
         </div>
-        <span className="version-label">Build 0.4.0</span>
+        <span className="version-label">Build 0.5.0</span>
       </aside>
 
       <main className="app-main">

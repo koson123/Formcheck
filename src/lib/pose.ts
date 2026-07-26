@@ -1,7 +1,12 @@
 import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision'
 import type { Landmark } from '../types'
+import { createLandmarkFilterState, stabilizeLandmarks } from './landmarkFilter'
 
 let landmarkerPromise: Promise<PoseLandmarker> | null = null
+let filterState = createLandmarkFilterState()
+let lastDetectionTimestamp: number | null = null
+
+const FILTER_RESET_GAP_MS = 750
 
 const connections: Array<[number, number]> = [
   [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
@@ -17,7 +22,7 @@ export async function getPoseLandmarker() {
   if (!landmarkerPromise) {
     landmarkerPromise = (async () => {
       const vision = await FilesetResolver.forVisionTasks(assetUrl('mediapipe/wasm'))
-      return PoseLandmarker.createFromOptions(vision, {
+      const landmarker = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath: assetUrl('mediapipe/models/pose_landmarker_lite.task')
         },
@@ -28,6 +33,30 @@ export async function getPoseLandmarker() {
         minTrackingConfidence: 0.55,
         outputSegmentationMasks: false
       })
+
+      const detectRaw = landmarker.detectForVideo.bind(landmarker)
+      landmarker.detectForVideo = ((videoFrame, timestamp) => {
+        if (
+          lastDetectionTimestamp === null ||
+          timestamp < lastDetectionTimestamp ||
+          timestamp - lastDetectionTimestamp > FILTER_RESET_GAP_MS
+        ) {
+          filterState = createLandmarkFilterState()
+        }
+
+        const detection = detectRaw(videoFrame, timestamp)
+        const rawLandmarks = detection.landmarks[0] ?? []
+        const filtered = stabilizeLandmarks(rawLandmarks, filterState, timestamp)
+        filterState = filtered.state
+        lastDetectionTimestamp = timestamp
+
+        return {
+          ...detection,
+          landmarks: filtered.landmarks.length ? [filtered.landmarks] : []
+        }
+      }) as typeof landmarker.detectForVideo
+
+      return landmarker
     })()
   }
   return landmarkerPromise
