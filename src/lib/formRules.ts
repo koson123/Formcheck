@@ -1,4 +1,4 @@
-import type { AnalysisResult, AnalyzerMemory, ExerciseId, Landmark, RepCounterConfig } from '../types'
+import type { AnalysisResult, AnalyzerMemory, ExerciseId, Landmark, RepCounterConfig, TrackedSide } from '../types'
 import { createRepCounterState, updateRepCounter } from './repCounter'
 
 const LEFT = { shoulder: 11, elbow: 13, wrist: 15, hip: 23, knee: 25, ankle: 27 }
@@ -62,11 +62,9 @@ function visible(point: Landmark | undefined) {
   return point?.visibility ?? point?.presence ?? 1
 }
 
-function getSide(landmarks: Landmark[]): SidePoints | null {
+function getSide(landmarks: Landmark[], trackedSide: TrackedSide): SidePoints | null {
   if (landmarks.length < 29) return null
-  const leftScore = Object.values(LEFT).reduce((sum, index) => sum + visible(landmarks[index]), 0)
-  const rightScore = Object.values(RIGHT).reduce((sum, index) => sum + visible(landmarks[index]), 0)
-  const side = leftScore >= rightScore ? LEFT : RIGHT
+  const side = trackedSide === 'left' ? LEFT : RIGHT
   return {
     shoulder: landmarks[side.shoulder],
     elbow: landmarks[side.elbow],
@@ -152,9 +150,10 @@ export function analyzeForm(
   exercise: ExerciseId,
   landmarks: Landmark[],
   memory: AnalyzerMemory,
+  trackedSide: TrackedSide,
   now = performance.now()
 ): AnalysisResult {
-  const points = getSide(landmarks)
+  const points = getSide(landmarks, trackedSide)
   if (!points || keyVisibility(points) < 0.68) {
     if (exercise === 'push-up' || exercise === 'squat') {
       const config = exercise === 'push-up' ? PUSH_UP_COUNTER : SQUAT_COUNTER
