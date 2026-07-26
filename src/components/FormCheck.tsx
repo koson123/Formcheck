@@ -4,7 +4,7 @@ import { exercises } from '../data/exercises'
 import { createCalibrationState, updateCalibration } from '../lib/calibration'
 import { analyzeForm, createAnalyzerMemory } from '../lib/formRules'
 import { clearPose, drawPose, getPoseLandmarker } from '../lib/pose'
-import type { AnalysisResult, CalibrationState, ExerciseId } from '../types'
+import type { AnalysisResult, AnalyzerMemory, CalibrationState, ExerciseId } from '../types'
 import { CalibrationOverlay } from './CalibrationOverlay'
 
 type SourceMode = 'camera' | 'recording'
@@ -122,21 +122,33 @@ export function FormCheck({ initialExercise }: Props) {
           const detection = landmarker.detectForVideo(video, performance.now())
           const landmarks = detection.landmarks[0]
           const previousCalibration = calibrationRef.current
+          const movementActive = isMovementActive(memoryRef.current)
 
           if (landmarks?.length) {
             drawPose(canvas, landmarks, video.videoWidth, video.videoHeight)
-            const nextCalibration = updateCalibration(exerciseRef.current, landmarks, previousCalibration)
+            const nextCalibration = updateCalibration(
+              exerciseRef.current,
+              landmarks,
+              previousCalibration,
+              movementActive
+            )
             const becameReady = !previousCalibration.calibrated && nextCalibration.calibrated
+            const sideStateChanged = nextCalibration.sideSwitchPending || nextCalibration.sideSwitched
             calibrationRef.current = nextCalibration
             setCalibration(nextCalibration)
 
-            if (becameReady) {
+            if (becameReady || sideStateChanged) {
               memoryRef.current = createAnalyzerMemory()
               setResult(null)
             }
 
-            if (nextCalibration.calibrated && nextCalibration.trackingValid) {
-              const analysis = analyzeForm(exerciseRef.current, landmarks, memoryRef.current)
+            if (nextCalibration.calibrated && nextCalibration.trackingValid && nextCalibration.lockedSide) {
+              const analysis = analyzeForm(
+                exerciseRef.current,
+                landmarks,
+                memoryRef.current,
+                nextCalibration.lockedSide
+              )
               memoryRef.current = analysis.memory
               setResult(analysis)
             } else {
@@ -144,7 +156,12 @@ export function FormCheck({ initialExercise }: Props) {
             }
           } else {
             clearPose(canvas)
-            const nextCalibration = updateCalibration(exerciseRef.current, [], previousCalibration)
+            const nextCalibration = updateCalibration(
+              exerciseRef.current,
+              [],
+              previousCalibration,
+              movementActive
+            )
             calibrationRef.current = nextCalibration
             setCalibration(nextCalibration)
             setResult(null)
@@ -215,7 +232,7 @@ export function FormCheck({ initialExercise }: Props) {
         <div>
           <span className="eyebrow">Offline camera coach</span>
           <h1>Check your form</h1>
-          <p>Formcheck verifies the camera setup and starting position before it begins counting or timing.</p>
+          <p>Formcheck calibrates once, locks one body side, and keeps that side consistent while analyzing movement.</p>
         </div>
         <label className="exercise-select">
           <span>Exercise</span>
@@ -318,7 +335,7 @@ export function FormCheck({ initialExercise }: Props) {
             <div className="waiting-analysis">
               <Video size={40} />
               <strong>Start a camera or video</strong>
-              <p>Calibration will verify the setup before live measurements begin.</p>
+              <p>Calibration will verify the setup and lock one side before live measurements begin.</p>
             </div>
           )}
 
@@ -337,6 +354,11 @@ export function FormCheck({ initialExercise }: Props) {
       </div>
     </section>
   )
+}
+
+function isMovementActive(memory: AnalyzerMemory) {
+  const repPhase = memory.repCounter.phase
+  return memory.phase === 'holding' || repPhase === 'descending' || repPhase === 'bottom' || repPhase === 'ascending'
 }
 
 function cameraError(cause: unknown) {
