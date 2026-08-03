@@ -1,0 +1,64 @@
+name: Superhuman Atlas CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - main
+      - agent/superhuman-atlas-foundation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: superhuman-atlas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build web application
+        run: npm run build:web
+
+      - name: Build Windows installers
+        run: npm run build
+
+      - name: Collect installers
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifact -Force | Out-Null
+          Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Copy-Item -Destination artifact
+          Get-ChildItem "src-tauri/target/release/bundle/msi/*.msi" | Copy-Item -Destination artifact
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Superhuman-Atlas-Windows
+          path: artifact/*
+          if-no-files-found: error
