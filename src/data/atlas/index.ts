@@ -9,6 +9,7 @@ import { domain08Paths } from './domain08'
 import { domain09Paths } from './domain09'
 import { domain10Paths } from './domain10'
 
+export const ATLAS_VERSION = '0.1.0'
 export const RANKS = ['Locked', 'Discovered', 'Capable', 'Reliable', 'Advanced', 'Mastered'] as const
 
 export type AtlasDomain = {
@@ -134,4 +135,12 @@ export function totalXp(progress: Record<string, number>, bonusXp = 0) {
 
 export function levelFromXp(xp: number) {
   return Math.floor(Math.sqrt(Math.max(0, xp) / 120)) + 1
+}
+
+export function levelFloor(level: number) {
+  return Math.max(0, (Math.max(1, level) - 1) ** 2 * 120)
+}
+
+export function nextLevelFloor(level: number) {
+  return Math.max(1, level) ** 2 * 120
 }
