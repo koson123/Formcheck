@@ -2,6 +2,9 @@ node_modules/
 dist/
 public/mediapipe/
 src-tauri/target/
+src-tauri/gen/
+artifact/
+*.tsbuildinfo
 .DS_Store
 *.log
 .vscode/
