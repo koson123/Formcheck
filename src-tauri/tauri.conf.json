@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Formcheck",
-  "version": "0.5.0",
-  "identifier": "com.trevor.formcheck",
+  "productName": "Superhuman Atlas",
+  "version": "0.1.0",
+  "identifier": "com.trevor.superhumanatlas",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "Formcheck",
-        "width": 1440,
-        "height": 900,
+        "title": "Superhuman Atlas",
+        "width": 1500,
+        "height": 940,
         "minWidth": 1000,
         "minHeight": 700,
         "resizable": true,
@@ -29,8 +29,8 @@
     "active": true,
     "targets": ["nsis", "msi"],
     "icon": ["icons/icon.ico"],
-    "shortDescription": "Offline calisthenics skill tree and form checker",
-    "longDescription": "Explore calisthenics progressions and receive local pose-based form feedback from a webcam or recorded video.",
+    "shortDescription": "Offline real-life skill tree, quest system, and movement coach",
+    "longDescription": "Explore a 1,000-skill real-life progression atlas, follow a high-return Golden Path, track proof-based mastery, complete focused quests, and use the built-in local movement analysis tools.",
     "windows": {
       "webviewInstallMode": {
         "type": "embedBootstrapper",
