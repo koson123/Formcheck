@@ -45,6 +45,19 @@ jobs:
         shell: pwsh
         run: |
           if (Test-Path "scripts/apply-retention-v0.1.1.mjs") {
+            $utf8 = [System.Text.UTF8Encoding]::new($false)
+            $paths = @(
+              "src/AtlasApp.tsx",
+              "src/atlas.css",
+              "package.json",
+              "src-tauri/tauri.conf.json",
+              "src-tauri/Cargo.toml",
+              "src/data/atlas/index.ts"
+            )
+            foreach ($path in $paths) {
+              $content = [System.IO.File]::ReadAllText($path)
+              [System.IO.File]::WriteAllText($path, $content.Replace("`r`n", "`n"), $utf8)
+            }
             node scripts/apply-retention-v0.1.1.mjs
           }
 
