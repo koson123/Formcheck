@@ -9,7 +9,7 @@ import { domain08Paths } from './domain08'
 import { domain09Paths } from './domain09'
 import { domain10Paths } from './domain10'
 
-export const ATLAS_VERSION = '0.1.0'
+export const ATLAS_VERSION = '0.1.1'
 export const RANKS = ['Locked', 'Discovered', 'Capable', 'Reliable', 'Advanced', 'Mastered'] as const
 
 export type AtlasDomain = {

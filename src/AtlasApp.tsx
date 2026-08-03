@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent, type CSSProperties } from 'react'
 import {
   Activity,
   Award,
@@ -62,10 +62,16 @@ import type { ExerciseId } from './types'
 type AtlasPage = 'command' | 'atlas' | 'golden' | 'quests' | 'movement' | 'about'
 type MovementMode = 'map' | 'analyzer'
 
+type MaintenanceRecord = {
+  lastReviewedAt: string
+  refreshCount: number
+}
+
 type AtlasProgress = {
   ranks: Record<string, number>
   activeSkillIds: string[]
   notes: Record<string, string>
+  maintenance: Record<string, MaintenanceRecord>
   completedQuests: Record<string, boolean>
   bonusXp: number
 }
@@ -77,9 +83,20 @@ type Quest = {
   xp: number
   kind: 'daily' | 'weekly'
   skillId?: string
+  maintenanceSkillIds?: string[]
 }
 
-const STORAGE_KEY = 'superhuman-atlas-progress-v1'
+type RetentionInfo = {
+  skill: AtlasSkill
+  status: 'fresh' | 'due-soon' | 'due'
+  lastReviewedAt: Date
+  dueAt: Date
+  daysRemaining: number
+  intervalDays: number
+}
+
+const STORAGE_KEY = 'superhuman-atlas-progress-v2'
+const LEGACY_STORAGE_KEY = 'superhuman-atlas-progress-v1'
 
 const domainIcons: Record<string, LucideIcon> = {
   dumbbell: Dumbbell,
@@ -120,20 +137,57 @@ export default function AtlasApp() {
   const levelProgress = Math.min(100, ((xp - levelStart) / Math.max(1, levelEnd - levelStart)) * 100)
 
   function updateSkillRank(skillId: string, rank: number) {
-    setProgress((current) => ({
-      ...current,
-      ranks: { ...current.ranks, [skillId]: Math.max(0, Math.min(5, rank)) }
-    }))
+    setProgress((current) => {
+      const skill = skillById.get(skillId)
+      const nextRank = Math.max(0, Math.min(5, rank))
+      if (!skill || (nextRank > 0 && !isSkillUnlocked(skill, current.ranks))) return current
+
+      const ranks = { ...current.ranks, [skillId]: nextRank }
+      const maintenance = { ...current.maintenance }
+      if (nextRank >= 3 && !maintenance[skillId]) {
+        maintenance[skillId] = { lastReviewedAt: new Date().toISOString(), refreshCount: 0 }
+      }
+      if (nextRank < 3) delete maintenance[skillId]
+
+      return {
+        ...current,
+        ranks,
+        maintenance,
+        activeSkillIds: sanitizeActiveSkillIds(current.activeSkillIds, ranks)
+      }
+    })
   }
 
   function toggleActiveSkill(skillId: string) {
     setProgress((current) => {
-      const active = current.activeSkillIds.includes(skillId)
-        ? current.activeSkillIds.filter((id) => id !== skillId)
-        : current.activeSkillIds.length < 3
-          ? [...current.activeSkillIds, skillId]
-          : [...current.activeSkillIds.slice(1), skillId]
-      return { ...current, activeSkillIds: active }
+      const skill = skillById.get(skillId)
+      const isActive = current.activeSkillIds.includes(skillId)
+      if (isActive) {
+        return { ...current, activeSkillIds: current.activeSkillIds.filter((id) => id !== skillId) }
+      }
+      if (!skill || !isSkillUnlocked(skill, current.ranks)) return current
+
+      const activeSkillIds = current.activeSkillIds.length < 3
+        ? [...current.activeSkillIds, skillId]
+        : [...current.activeSkillIds.slice(1), skillId]
+      return { ...current, activeSkillIds }
+    })
+  }
+
+  function refreshSkill(skillId: string) {
+    setProgress((current) => {
+      if ((current.ranks[skillId] ?? 0) < 3) return current
+      const previous = current.maintenance[skillId]
+      return {
+        ...current,
+        maintenance: {
+          ...current.maintenance,
+          [skillId]: {
+            lastReviewedAt: new Date().toISOString(),
+            refreshCount: (previous?.refreshCount ?? 0) + 1
+          }
+        }
+      }
     })
   }
 
@@ -143,11 +197,23 @@ export default function AtlasApp() {
 
   function completeQuest(quest: Quest) {
     if (progress.completedQuests[quest.id]) return
-    setProgress((current) => ({
-      ...current,
-      completedQuests: { ...current.completedQuests, [quest.id]: true },
-      bonusXp: current.bonusXp + quest.xp
-    }))
+    setProgress((current) => {
+      const maintenance = { ...current.maintenance }
+      for (const skillId of quest.maintenanceSkillIds ?? []) {
+        if ((current.ranks[skillId] ?? 0) < 3) continue
+        const previous = maintenance[skillId]
+        maintenance[skillId] = {
+          lastReviewedAt: new Date().toISOString(),
+          refreshCount: (previous?.refreshCount ?? 0) + 1
+        }
+      }
+      return {
+        ...current,
+        maintenance,
+        completedQuests: { ...current.completedQuests, [quest.id]: true },
+        bonusXp: current.bonusXp + quest.xp
+      }
+    })
   }
 
   function openMovement(exercise?: ExerciseId) {
@@ -203,10 +269,15 @@ export default function AtlasApp() {
               window.setTimeout(() => window.dispatchEvent(new CustomEvent('atlas-open-skill', { detail: skillId })), 0)
             }}
             onCompleteQuest={completeQuest}
+            onRefreshSkill={refreshSkill}
           />
         ) : null}
-        {page === 'atlas' ? <AtlasExplorer progress={progress} onRankChange={updateSkillRank} onToggleActive={toggleActiveSkill} onNoteChange={updateNote} onOpenMovement={openMovement} /> : null}
-        {page === 'golden' ? <GoldenPath progress={progress} onRankChange={updateSkillRank} onToggleActive={toggleActiveSkill} onNoteChange={updateNote} onOpenMovement={openMovement} /> : null}
+        {page === 'atlas' ? <AtlasExplorer progress={progress} onRankChange={updateSkillRank} onToggleActive={toggleActiveSkill} onNoteChange={updateNote}
+            onRefreshSkill={refreshSkill}
+            onOpenMovement={openMovement} /> : null}
+        {page === 'golden' ? <GoldenPath progress={progress} onRankChange={updateSkillRank} onToggleActive={toggleActiveSkill} onNoteChange={updateNote}
+            onRefreshSkill={refreshSkill}
+            onOpenMovement={openMovement} /> : null}
         {page === 'quests' ? <QuestBoard progress={progress} onCompleteQuest={completeQuest} onOpenAtlas={() => setPage('atlas')} /> : null}
         {page === 'movement' ? (
           <MovementLab mode={movementMode} exercise={movementExercise} onModeChange={setMovementMode} onAnalyze={(exerciseId) => { setMovementExercise(exerciseId); setMovementMode('analyzer') }} />
@@ -217,13 +288,14 @@ export default function AtlasApp() {
   )
 }
 
-function CommandCenter({ progress, xp, level, onOpenAtlas, onOpenSkill, onCompleteQuest }: {
+function CommandCenter({ progress, xp, level, onOpenAtlas, onOpenSkill, onCompleteQuest, onRefreshSkill }: {
   progress: AtlasProgress
   xp: number
   level: number
   onOpenAtlas: () => void
   onOpenSkill: (skillId: string) => void
   onCompleteQuest: (quest: Quest) => void
+  onRefreshSkill: (skillId: string) => void
 }) {
   const stats = useMemo(() => {
     const ranks = Object.values(progress.ranks)
@@ -237,6 +309,7 @@ function CommandCenter({ progress, xp, level, onOpenAtlas, onOpenSkill, onComple
   const activeSkills = progress.activeSkillIds.map((id) => skillById.get(id)).filter(Boolean) as AtlasSkill[]
   const recommended = getRecommendedSkills(progress.ranks, 4)
   const quests = buildQuests(progress).filter((quest) => quest.kind === 'daily').slice(0, 3)
+  const retentionQueue = getMaintenanceQueue(progress, 4)
 
   return (
     <div className="atlas-page atlas-dashboard-page">
@@ -300,6 +373,25 @@ function CommandCenter({ progress, xp, level, onOpenAtlas, onOpenSkill, onComple
           </div>
         </section>
 
+        <section className="atlas-panel atlas-retention-panel">
+          <PanelHeading eyebrow="Retention system" title="Capability upkeep" />
+          {retentionQueue.length ? (
+            <div className="atlas-retention-list">
+              {retentionQueue.map((item) => (
+                <article key={item.skill.id} className={`retention-${item.status}`}>
+                  <button className="atlas-retention-open" onClick={() => onOpenSkill(item.skill.id)}>
+                    <RankOrb skill={item.skill} rank={progress.ranks[item.skill.id] ?? 0} small />
+                    <span><strong>{item.skill.name}</strong><small>{retentionLabel(item)}</small></span>
+                  </button>
+                  <button className="atlas-retention-refresh" onClick={() => onRefreshSkill(item.skill.id)}><RotateCcw size={14} /> Refreshed</button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon={ShieldCheck} title="Nothing due" detail="Reliable skills will appear here when a short refresh is needed." action="Review learned skills" onAction={onOpenAtlas} />
+          )}
+        </section>
+
         <section className="atlas-panel atlas-domain-panel">
           <PanelHeading eyebrow="Whole build" title="Domain readiness" />
           <div className="atlas-domain-progress-grid">
@@ -321,7 +413,7 @@ function CommandCenter({ progress, xp, level, onOpenAtlas, onOpenSkill, onComple
   )
 }
 
-function AtlasExplorer({ progress, onRankChange, onToggleActive, onNoteChange, onOpenMovement }: SkillActions & { progress: AtlasProgress }) {
+function AtlasExplorer({ progress, onRankChange, onToggleActive, onNoteChange, onRefreshSkill, onOpenMovement }: SkillActions & { progress: AtlasProgress }) {
   const [domainId, setDomainId] = useState('D01')
   const [pathId, setPathId] = useState('P01')
   const [query, setQuery] = useState('')
@@ -359,7 +451,7 @@ function AtlasExplorer({ progress, onRankChange, onToggleActive, onNoteChange, o
     <div className="atlas-page atlas-explorer-page">
       <header className="atlas-page-header atlas-explorer-header">
         <div><span className="atlas-eyebrow">10 domains · 100 paths · 1,000 skills</span><h1>Skill atlas</h1><p>Open a domain, choose a path, and climb only as high as your real life requires.</p></div>
-        <label className="atlas-search-box"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search all 1,000 skills" />{query ? <button onClick={() => setQuery('')}><X size={16} /></button> : null}</label>
+        <label className="atlas-search-box"><Search size={18} /><input value={query} onChange={(event: ChangeEvent<HTMLInputElement>) => setQuery(event.target.value)} placeholder="Search all 1,000 skills" />{query ? <button onClick={() => setQuery('')}><X size={16} /></button> : null}</label>
       </header>
 
       <div className="atlas-domain-tabs">
@@ -419,12 +511,12 @@ function AtlasExplorer({ progress, onRankChange, onToggleActive, onNoteChange, o
         </div>
       )}
 
-      {selectedSkill ? <SkillDrawer skill={selectedSkill} progress={progress} onClose={() => setSelectedSkillId(null)} onRankChange={onRankChange} onToggleActive={onToggleActive} onNoteChange={onNoteChange} onOpenMovement={onOpenMovement} /> : null}
+      {selectedSkill ? <SkillDrawer skill={selectedSkill} progress={progress} onClose={() => setSelectedSkillId(null)} onRankChange={onRankChange} onToggleActive={onToggleActive} onNoteChange={onNoteChange} onRefreshSkill={onRefreshSkill} onOpenMovement={onOpenMovement} /> : null}
     </div>
   )
 }
 
-function GoldenPath({ progress, onRankChange, onToggleActive, onNoteChange, onOpenMovement }: SkillActions & { progress: AtlasProgress }) {
+function GoldenPath({ progress, onRankChange, onToggleActive, onNoteChange, onRefreshSkill, onOpenMovement }: SkillActions & { progress: AtlasProgress }) {
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null)
   const groups = Array.from(new Set(goldenPathSkills.map((skill) => skill.pathId))).map((pathId) => ({ path: pathById.get(pathId)!, skills: goldenPathSkills.filter((skill) => skill.pathId === pathId) }))
   const selectedSkill = selectedSkillId ? skillById.get(selectedSkillId) ?? null : null
@@ -444,7 +536,7 @@ function GoldenPath({ progress, onRankChange, onToggleActive, onNoteChange, onOp
           )
         })}
       </div>
-      {selectedSkill ? <SkillDrawer skill={selectedSkill} progress={progress} onClose={() => setSelectedSkillId(null)} onRankChange={onRankChange} onToggleActive={onToggleActive} onNoteChange={onNoteChange} onOpenMovement={onOpenMovement} /> : null}
+      {selectedSkill ? <SkillDrawer skill={selectedSkill} progress={progress} onClose={() => setSelectedSkillId(null)} onRankChange={onRankChange} onToggleActive={onToggleActive} onNoteChange={onNoteChange} onRefreshSkill={onRefreshSkill} onOpenMovement={onOpenMovement} /> : null}
     </div>
   )
 }
@@ -478,7 +570,7 @@ function SystemPage({ progress, onReset }: { progress: AtlasProgress; onReset: (
       <div className="atlas-system-grid">
         <section className="atlas-panel"><Target size={28} /><h2>Three active lines</h2><p>Keep only three skills active. Everything else stays visible but does not demand attention.</p></section>
         <section className="atlas-panel"><ShieldCheck size={28} /><h2>Reliable beats perfect</h2><p>Rank three means you can use the skill independently. Mastery is optional and should be reserved for abilities you truly care about.</p></section>
-        <section className="atlas-panel"><Clock size={28} /><h2>Tiny maintenance</h2><p>Once an ability becomes reliable, define the smallest routine that keeps it available.</p></section>
+        <section className="atlas-panel"><Clock size={28} /><h2>Retention queue</h2><p>Reliable skills receive short refresh checks every 14–60 days. Achievements never disappear; due skills simply ask for a tune-up.</p></section>
         <section className="atlas-panel"><BookOpen size={28} /><h2>Proof tests</h2><p>Skills rank up through demonstrations and projects rather than passive reading or artificial streaks.</p></section>
       </div>
       <section className="atlas-data-panel atlas-panel"><div><span className="atlas-eyebrow">Local save</span><h2>Your data</h2><p>{Object.keys(progress.ranks).length} skills contain progress, {progress.activeSkillIds.length} are active, and {Object.keys(progress.completedQuests).length} quests are complete.</p></div><button className="atlas-danger-button" onClick={onReset}><RotateCcw size={17} /> Reset all progress</button></section>
@@ -491,10 +583,11 @@ type SkillActions = {
   onRankChange: (skillId: string, rank: number) => void
   onToggleActive: (skillId: string) => void
   onNoteChange: (skillId: string, note: string) => void
+  onRefreshSkill: (skillId: string) => void
   onOpenMovement: (exercise?: ExerciseId) => void
 }
 
-function SkillDrawer({ skill, progress, onClose, onRankChange, onToggleActive, onNoteChange, onOpenMovement }: SkillActions & { skill: AtlasSkill; progress: AtlasProgress; onClose: () => void }) {
+function SkillDrawer({ skill, progress, onClose, onRankChange, onToggleActive, onNoteChange, onRefreshSkill, onOpenMovement }: SkillActions & { skill: AtlasSkill; progress: AtlasProgress; onClose: () => void }) {
   const rank = progress.ranks[skill.id] ?? 0
   const unlocked = isSkillUnlocked(skill, progress.ranks)
   const active = progress.activeSkillIds.includes(skill.id)
@@ -502,6 +595,7 @@ function SkillDrawer({ skill, progress, onClose, onRankChange, onToggleActive, o
   const prerequisite = skill.prerequisiteIds[0] ? skillById.get(skill.prerequisiteIds[0]) : null
   const next = skillById.get(`${skill.pathId}-S${String(skill.tier + 1).padStart(2, '0')}`)
   const analyzerExercise = analyzerForSkill(skill)
+  const retention = getRetentionInfo(skill, progress)
 
   return (
     <aside className="atlas-skill-drawer" style={{ '--domain-color': domain.color } as CSSProperties}>
@@ -517,9 +611,37 @@ function SkillDrawer({ skill, progress, onClose, onRankChange, onToggleActive, o
         {rank ? <button className="atlas-text-button" onClick={() => onRankChange(skill.id, 0)}><Minus size={14} /> Clear this skill</button> : null}
       </section>
       <section className="atlas-proof-card"><Target size={20} /><div><span className="atlas-eyebrow">Proof test</span><p>{skill.proof}</p></div></section>
+      {rank >= 3 && retention ? (
+        <section className={`atlas-retention-card retention-${retention.status}`}>
+          <RotateCcw size={20} />
+          <div>
+            <span className="atlas-eyebrow">Retention plan</span>
+            <h3>{retentionHeadline(retention)}</h3>
+            <p>{retentionDetail(retention, skill)}</p>
+          </div>
+          <button onClick={() => onRefreshSkill(skill.id)}>Log refresh</button>
+        </section>
+      ) : (
+        <section className="atlas-retention-card retention-locked">
+          <ShieldCheck size={20} />
+          <div><span className="atlas-eyebrow">Retention plan</span><h3>Unlocks at Reliable</h3><p>Reach rank 3, then the Atlas will schedule tiny refresh checks so the skill stays usable.</p></div>
+        </section>
+      )}
+
       <section className="atlas-drawer-section atlas-chain-section"><span className="atlas-eyebrow">Path connections</span><div>{prerequisite ? <span><small>Requires</small><strong>{prerequisite.name}</strong></span> : <span><small>Requires</small><strong>No prerequisite</strong></span>}<ChevronRight size={17} />{next ? <span><small>Leads to</small><strong>{next.name}</strong></span> : <span><small>Leads to</small><strong>Path complete</strong></span>}</div></section>
-      <section className="atlas-drawer-section"><label className="atlas-note-field"><span className="atlas-eyebrow">Evidence and notes</span><textarea value={progress.notes[skill.id] ?? ''} onChange={(event) => onNoteChange(skill.id, event.target.value)} placeholder="Record what you practiced, built, tested, or demonstrated…" /></label></section>
-      <div className="atlas-drawer-actions"><button className={active ? 'atlas-secondary-button active' : 'atlas-primary-button'} onClick={() => onToggleActive(skill.id)}><Pin size={17} />{active ? 'Remove from loadout' : 'Make active'}</button>{analyzerExercise ? <button className="atlas-secondary-button" onClick={() => onOpenMovement(analyzerExercise)}><Camera size={17} /> Check form</button> : null}</div>
+      <section className="atlas-drawer-section"><label className="atlas-note-field"><span className="atlas-eyebrow">Evidence and notes</span><textarea value={progress.notes[skill.id] ?? ''} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onNoteChange(skill.id, event.target.value)} placeholder="Record what you practiced, built, tested, or demonstrated…" /></label></section>
+      <div className="atlas-drawer-actions">
+        <button
+          className={active ? 'atlas-secondary-button active' : unlocked ? 'atlas-primary-button' : 'atlas-secondary-button'}
+          disabled={!unlocked && !active}
+          title={!unlocked && !active ? 'Complete the prerequisite before adding this skill to your loadout.' : undefined}
+          onClick={() => onToggleActive(skill.id)}
+        >
+          {unlocked || active ? <Pin size={17} /> : <LockKeyhole size={17} />}
+          {active ? 'Remove from loadout' : unlocked ? 'Make active' : 'Locked — complete prerequisite'}
+        </button>
+        {analyzerExercise ? <button className="atlas-secondary-button" onClick={() => onOpenMovement(analyzerExercise)}><Camera size={17} /> Check form</button> : null}
+      </div>
     </aside>
   )
 }
@@ -563,6 +685,63 @@ function isSkillUnlocked(skill: AtlasSkill, ranks: Record<string, number>) {
   return skill.prerequisiteIds.length === 0 || skill.prerequisiteIds.every((id) => (ranks[id] ?? 0) >= 2)
 }
 
+function sanitizeActiveSkillIds(activeSkillIds: string[], ranks: Record<string, number>) {
+  return activeSkillIds.filter((id, index) => {
+    const skill = skillById.get(id)
+    return Boolean(skill && isSkillUnlocked(skill, ranks) && activeSkillIds.indexOf(id) === index)
+  }).slice(0, 3)
+}
+
+function maintenanceIntervalDays(rank: number) {
+  if (rank >= 5) return 60
+  if (rank >= 4) return 30
+  return 14
+}
+
+function getRetentionInfo(skill: AtlasSkill, progress: AtlasProgress, now = new Date()): RetentionInfo | null {
+  const rank = progress.ranks[skill.id] ?? 0
+  if (rank < 3) return null
+  const record = progress.maintenance[skill.id]
+  const parsedLastReview = record?.lastReviewedAt ? new Date(record.lastReviewedAt) : now
+  const lastReviewedAt = Number.isNaN(parsedLastReview.getTime()) ? now : parsedLastReview
+  const intervalDays = maintenanceIntervalDays(rank)
+  const dueAt = new Date(lastReviewedAt.getTime() + intervalDays * 86400000)
+  const daysRemaining = Math.ceil((dueAt.getTime() - now.getTime()) / 86400000)
+  const status = daysRemaining <= 0 ? 'due' : daysRemaining <= Math.max(3, Math.ceil(intervalDays * 0.2)) ? 'due-soon' : 'fresh'
+  return { skill, status, lastReviewedAt, dueAt, daysRemaining, intervalDays }
+}
+
+function getMaintenanceQueue(progress: AtlasProgress, limit = 1000) {
+  const priority = { due: 0, 'due-soon': 1, fresh: 2 }
+  return atlasSkills
+    .map((skill) => getRetentionInfo(skill, progress))
+    .filter((item): item is RetentionInfo => Boolean(item))
+    .sort((a, b) => priority[a.status] - priority[b.status] || a.dueAt.getTime() - b.dueAt.getTime())
+    .slice(0, limit)
+}
+
+function retentionLabel(info: RetentionInfo) {
+  if (info.status === 'due') return `${Math.abs(info.daysRemaining)} day${Math.abs(info.daysRemaining) === 1 ? '' : 's'} overdue`
+  if (info.status === 'due-soon') return `Refresh in ${info.daysRemaining} day${info.daysRemaining === 1 ? '' : 's'}`
+  return `Fresh · next check ${formatDate(info.dueAt)}`
+}
+
+function retentionHeadline(info: RetentionInfo) {
+  if (info.status === 'due') return 'Refresh due now'
+  if (info.status === 'due-soon') return 'Refresh coming soon'
+  return 'Capability is fresh'
+}
+
+function retentionDetail(info: RetentionInfo, skill: AtlasSkill) {
+  const minutes = Math.max(5, Math.ceil(skill.maintenanceMinutesPerMonth / 2))
+  if (info.status === 'due') return `Spend about ${minutes} minutes re-demonstrating the skill, then log the refresh. Your achieved rank is never erased.`
+  return `Next check: ${formatDate(info.dueAt)}. A short ${minutes}-minute demonstration should keep this ability available.`
+}
+
+function formatDate(date: Date) {
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined })
+}
+
 function analyzerForSkill(skill: AtlasSkill): ExerciseId | undefined {
   const name = skill.name.toLowerCase()
   if (name.includes('push-up') || name === 'push strength') return 'push-up'
@@ -576,34 +755,57 @@ function analyzerForSkill(skill: AtlasSkill): ExerciseId | undefined {
 function buildQuests(progress: AtlasProgress): Quest[] {
   const today = new Date().toISOString().slice(0, 10)
   const week = weekKey(new Date())
-  const active = progress.activeSkillIds.map((id) => skillById.get(id)).filter(Boolean) as AtlasSkill[]
+  const active = progress.activeSkillIds
+    .map((id) => skillById.get(id))
+    .filter((skill): skill is AtlasSkill => Boolean(skill && isSkillUnlocked(skill, progress.ranks)))
   const selected = active.length ? active : getRecommendedSkills(progress.ranks, 3)
-  const daily: Quest[] = selected.slice(0, 3).map((skill, index) => ({
+  const dueMaintenance = getMaintenanceQueue(progress).filter((item) => item.status !== 'fresh')
+  const daily: Quest[] = dueMaintenance.slice(0, 1).map((item) => ({
+    id: `${today}-maintenance-${item.skill.id}`,
+    title: `Refresh ${item.skill.name}`,
+    detail: `Re-demonstrate the skill for ${Math.max(5, Math.ceil(item.skill.maintenanceMinutesPerMonth / 2))} minutes and record one thing that still feels automatic—or one part that needs work.`,
+    xp: 35,
+    kind: 'daily',
+    skillId: item.skill.id,
+    maintenanceSkillIds: [item.skill.id]
+  }))
+  daily.push(...selected.slice(0, 3 - daily.length).map((skill, index) => ({
     id: `${today}-practice-${skill.id}`,
     title: index === 0 ? `Train ${skill.name}` : index === 1 ? `Test ${skill.name}` : `Explain ${skill.name}`,
-    detail: index === 0 ? 'Complete one focused 10–25 minute practice session and record what changed.' : index === 1 ? `Attempt the current proof standard: ${skill.proof}` : 'Explain the idea simply from memory or demonstrate it to another person.',
+    detail: index === 0
+      ? 'Complete one focused 10–25 minute practice session and record what changed.'
+      : index === 1
+        ? `Attempt the current proof standard: ${skill.proof}`
+        : 'Explain the idea simply from memory or demonstrate it to another person.',
     xp: 25 + index * 10,
-    kind: 'daily',
+    kind: 'daily' as const,
     skillId: skill.id
-  }))
+  })))
   while (daily.length < 3) {
     const index = daily.length
     daily.push({ id: `${today}-foundation-${index}`, title: ['Ten-minute movement reset', 'Twenty-five-minute focus chamber', 'Problem hunter'][index], detail: ['Complete a short mobility, posture, and joint-control routine.', 'Work on one useful task with notifications and distractions removed.', 'Write down one recurring annoyance that could become a project or automation.'][index], xp: 25 + index * 10, kind: 'daily' })
   }
   const names = selected.map((skill) => skill.name)
-  return [...daily, {
-    id: `${week}-boss-demonstration`,
-    title: names.length >= 2 ? `${names[0]} + ${names[1]} combination trial` : 'Build a useful proof project',
-    detail: names.length >= 2 ? `Create one small challenge or project that requires both ${names[0]} and ${names[1]}. Save evidence and one lesson learned.` : 'Choose one skill, use it in a real task, document the result, and identify the next bottleneck.',
-    xp: 250,
-    kind: 'weekly'
-  }, {
-    id: `${week}-boss-maintenance`,
-    title: 'Capability maintenance circuit',
-    detail: 'Revisit three previously learned abilities for five minutes each. Confirm what remains reliable and what needs refreshing.',
-    xp: 120,
-    kind: 'weekly'
-  }]
+  const weekly: Quest[] = [
+    {
+      id: `${week}-boss-demonstration`,
+      title: names.length >= 2 ? `${names[0]} + ${names[1]} combination trial` : 'Build a useful proof project',
+      detail: names.length >= 2 ? `Create one small challenge or project that requires both ${names[0]} and ${names[1]}. Save evidence and one lesson learned.` : 'Choose one skill, use it in a real task, document the result, and identify the next bottleneck.',
+      xp: 250,
+      kind: 'weekly'
+    },
+    {
+      id: `${week}-boss-maintenance`,
+      title: 'Capability maintenance circuit',
+      detail: dueMaintenance.length
+        ? `Refresh ${dueMaintenance.slice(0, 3).map((item) => item.skill.name).join(', ')} and record what stayed automatic.`
+        : 'Revisit three reliable abilities for five minutes each. Confirm what remains reliable and what needs refreshing.',
+      xp: 120,
+      kind: 'weekly',
+      maintenanceSkillIds: dueMaintenance.slice(0, 3).map((item) => item.skill.id)
+    }
+  ]
+  return [...daily, ...weekly]
 }
 
 function weekKey(date: Date) {
@@ -620,18 +822,25 @@ function capitalize(value: string) {
 }
 
 function emptyProgress(): AtlasProgress {
-  return { ranks: {}, activeSkillIds: [], notes: {}, completedQuests: {}, bonusXp: 0 }
+  return { ranks: {}, activeSkillIds: [], notes: {}, maintenance: {}, completedQuests: {}, bonusXp: 0 }
 }
 
 function loadProgress(): AtlasProgress {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const raw = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY)
     if (!raw) return emptyProgress()
     const parsed = JSON.parse(raw) as Partial<AtlasProgress>
+    const ranks = parsed.ranks ?? {}
+    const maintenance = { ...(parsed.maintenance ?? {}) }
+    const migratedAt = new Date().toISOString()
+    for (const [skillId, rank] of Object.entries(ranks)) {
+      if (rank >= 3 && !maintenance[skillId]) maintenance[skillId] = { lastReviewedAt: migratedAt, refreshCount: 0 }
+    }
     return {
-      ranks: parsed.ranks ?? {},
-      activeSkillIds: parsed.activeSkillIds ?? [],
+      ranks,
+      activeSkillIds: sanitizeActiveSkillIds(parsed.activeSkillIds ?? [], ranks),
       notes: parsed.notes ?? {},
+      maintenance,
       completedQuests: parsed.completedQuests ?? {},
       bonusXp: parsed.bonusXp ?? 0
     }
