@@ -1,32 +1,46 @@
-# Formcheck
+# Superhuman Atlas
 
-Formcheck is an offline Windows calisthenics reference with two focused tools:
+Superhuman Atlas is an offline-first Windows progression app for building broad real-world capability without turning life into endless grinding.
 
-1. A large, zoomable skill progression map inspired by roadmap-style calisthenics sites.
-2. An exercise-specific form checker using the laptop webcam or a locally imported video recorded on a phone.
+It grows the original Formcheck project into a complete skill-development system while preserving Formcheck as the built-in **Movement Lab**.
 
-It is intentionally **not** a workout planner, workout log, social network, streak app, XP system, or subscription service.
+## Current foundation
 
-## Current features
+- **1,000 named skills** across 10 domains and 100 paths
+- Ten-tier progression ladders with explicit prerequisites
+- Six proof-based states: Locked, Discovered, Capable, Reliable, Advanced, and Mastered
+- A 60-node **Golden Path** focused on maximum capability per hour
+- Three-skill active loadouts to prevent overwhelm
+- Local XP, levels, evidence notes, proof tests, and progress tracking
+- Daily missions and weekly boss quests generated from the active loadout
+- Global search across the complete atlas
+- Domain readiness and path-level progress summaries
+- Existing calisthenics progression map
+- Existing local MediaPipe camera analyzer for push-up, squat, plank, handstand, and front lever
+- Windows `.exe` and `.msi` builds through GitHub Actions
 
-- Interactive skill tree with push, pull, balance, core, legs, mobility, planche, lever, handstand, muscle-up, and compression branches.
-- Prerequisites, standards, cues, common mistakes, and next progressions for each node.
-- Fully local MediaPipe pose detection.
-- Initial form templates for:
-  - Push-up
-  - Bodyweight squat
-  - Plank
-  - Handstand
-  - Front lever
-- Laptop webcam mode.
-- Recorded-video mode for clips made with a phone camera.
-- Automatic GitHub Actions build that produces Windows `.exe` and `.msi` installers.
+## The ten domains
 
-## Privacy and offline behavior
+1. Physical Engine
+2. Movement and Defense
+3. Supermind
+4. Awareness
+5. Communication
+6. Technology
+7. Builder
+8. Survival and Rescue
+9. Life Mastery
+10. Expression and Influence
 
-The packaged app includes the MediaPipe WebAssembly runtime and pose model. Camera frames and selected videos are processed on the device and are not uploaded by Formcheck.
+Each domain contains 10 paths. Each path contains 10 deliberately ordered skills, creating a 1,000-node backbone that can expand into drills, resources, projects, achievements, and combination abilities.
 
-The first development install downloads the official pose model once so it can be bundled into the final app. The installed Windows app then works offline.
+## Design rules
+
+- **Reliable beats perfect.** Rank 3 is the main target for most abilities.
+- **Only three active lines.** The rest of the atlas remains optional.
+- **Proof over tapping.** Progress should represent demonstrated ability.
+- **Maintenance stays small.** Learned abilities should not consume the future.
+- **Offline first.** Progress and camera processing stay on the computer.
 
 ## Local development on Windows
 
@@ -35,32 +49,38 @@ Install:
 - Node.js 22 or newer
 - Rust stable using rustup
 - Microsoft C++ Build Tools with the Desktop development with C++ workload
-- WebView2, which is included with modern Windows 10 and Windows 11
+- WebView2, included with modern Windows 10 and Windows 11
 
-Then run:
+Run the development app:
 
 ```powershell
 npm install
 npm run tauri dev
 ```
 
-Build installers:
+Run tests:
+
+```powershell
+npm test
+```
+
+Build Windows installers:
 
 ```powershell
 npm run build
 ```
 
-The installers will be created under:
+Installers are created under:
 
 ```text
 src-tauri\target\release\bundle\nsis\
 src-tauri\target\release\bundle\msi\
 ```
 
-## Getting the GitHub-built `.exe`
+## Privacy
 
-Open the repository's **Actions** tab, select **Build Windows app**, open the newest successful run, and download the `Formcheck-Windows` artifact.
+The app uses browser local storage for atlas progress. The packaged MediaPipe runtime processes supported movement footage locally. Camera frames and imported videos are not intentionally uploaded by the application.
 
-## Scope of the first release
+## Project status
 
-Laptop-camera analysis is the primary mode. Phone footage can be recorded on the phone and imported locally. Direct phone-to-laptop pairing over the local network is planned as a later offline feature.
+This branch establishes the complete Atlas backbone and the first usable desktop experience. The architecture is intentionally data-driven so later releases can add unique drills, learning resources, custom quests, achievements, combination unlocks, seasons, export/import, and optional device sync without replacing the core map.
