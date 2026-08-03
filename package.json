@@ -1,7 +1,7 @@
 {
-  "name": "formcheck",
+  "name": "superhuman-atlas",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite --port 1420",
